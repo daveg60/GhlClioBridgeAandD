@@ -69,7 +69,7 @@ def extract_practice_area(description):
 def index():
     """Homepage with status and login link"""
     clio_token = None
-    
+
     # First check session
     if 'clio_token' in session:
         clio_token = session['clio_token']
@@ -90,7 +90,7 @@ def index():
             conn.close()
         except Exception as e:
             print(f"Error checking database for Clio token: {str(e)}")
-    
+
     if clio_token:
         return jsonify({
             "status": "connected",
@@ -133,25 +133,25 @@ def clio_callback():
     token_info = response.json()
     access_token = token_info.get('access_token')
     refresh_token = token_info.get('refresh_token')
-    
+
     # Store tokens in session
     session['clio_token'] = access_token
     session['clio_refresh_token'] = refresh_token
-    
+
     # Store tokens in database using raw SQL to avoid circular imports
     import sqlite3
     import psycopg2
     import os
-    
+
     # Use PostgreSQL connection from environment variable
     db_url = os.environ.get("DATABASE_URL")
     conn = psycopg2.connect(db_url)
     cursor = conn.cursor()
-    
+
     # Check if Clio config exists
     cursor.execute("SELECT id FROM api_configs WHERE service = 'clio'")
     clio_config = cursor.fetchone()
-    
+
     if clio_config:
         # Update existing config
         cursor.execute(
@@ -166,7 +166,7 @@ def clio_callback():
                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())""",
             ('clio', CLIO_CLIENT_ID, CLIO_CLIENT_SECRET, CLIO_API_BASE, access_token, refresh_token, True)
         )
-    
+
     # Save changes to database
     conn.commit()
     cursor.close()
@@ -208,7 +208,7 @@ def ghl_webhook():
 
         # Check if we're authenticated with Clio (either via session or database)
         clio_token = None
-        
+
         # First check session
         if 'clio_token' in session:
             clio_token = session['clio_token']
@@ -229,7 +229,7 @@ def ghl_webhook():
                 conn.close()
             except Exception as e:
                 print(f"Error checking database for Clio token: {str(e)}")
-        
+
         if clio_token:
             # Create contact in Clio
             contact_data = create_clio_contact(full_name, email, phone, state)
@@ -259,6 +259,11 @@ def clio_webhook():
     # This can be implemented later if needed
     return jsonify({"status": "received"})
 
+@app.route('/ping', methods=['GET'])
+def ping():
+    """Simple health check endpoint"""
+    return jsonify({"status": "ok", "message": "Service is running"}), 200
+
 # Clio API Functions
 def create_clio_contact(full_name, email, phone, state):
     """Create a contact in Clio"""
@@ -267,7 +272,7 @@ def create_clio_contact(full_name, email, phone, state):
     first_name = name_parts[0] if name_parts else ""
     last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ""
 
-    # Prepare contact data
+    # Prepare contact data - with the correct structure for specifying person type
     contact_data = {
         "data": {
             "type": "contacts",
@@ -278,6 +283,7 @@ def create_clio_contact(full_name, email, phone, state):
                 "title": "",
                 "prefix": "",
                 "is_client": True,
+                "contact_type_id": 1,  # 1 for Person, 2 for Company
                 "email_addresses": [
                     {
                         "name": "Work",
@@ -290,9 +296,6 @@ def create_clio_contact(full_name, email, phone, state):
                         "number": phone
                     }
                 ]
-            },
-            "meta": {
-                "type": "Person"  # This is the correct place for the Person/Company type
             }
         }
     }
@@ -313,11 +316,18 @@ def create_clio_contact(full_name, email, phone, state):
         "Content-Type": "application/json"
     }
 
+    # Debug output
+    print(f"✅ Sending contact data to Clio: {json.dumps(contact_data, indent=2)}")
+
     response = requests.post(
         f"{CLIO_API_BASE}/contacts",
         headers=headers,
         json=contact_data
     )
+
+    # Log the response for debugging
+    print(f"✅ Clio API response status: {response.status_code}")
+    print(f"✅ Clio API response: {response.text}")
 
     if response.status_code not in [200, 201]:
         print(f"❌ Error creating Clio contact: {response.text}")
