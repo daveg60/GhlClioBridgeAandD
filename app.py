@@ -68,7 +68,30 @@ def extract_practice_area(description):
 @app.route('/')
 def index():
     """Homepage with status and login link"""
+    clio_token = None
+    
+    # First check session
     if 'clio_token' in session:
+        clio_token = session['clio_token']
+    else:
+        # Then check database
+        try:
+            import psycopg2
+            db_url = os.environ.get("DATABASE_URL")
+            conn = psycopg2.connect(db_url)
+            cursor = conn.cursor()
+            cursor.execute("SELECT oauth_token FROM api_configs WHERE service = 'clio' AND oauth_token IS NOT NULL")
+            result = cursor.fetchone()
+            if result and result[0]:
+                clio_token = result[0]
+                # Also store in session for future requests
+                session['clio_token'] = clio_token
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            print(f"Error checking database for Clio token: {str(e)}")
+    
+    if clio_token:
         return jsonify({
             "status": "connected",
             "message": "GHL to Clio bridge is active and authenticated with Clio"
@@ -249,8 +272,12 @@ def create_clio_contact(full_name, email, phone, state):
         "data": {
             "type": "contacts",
             "attributes": {
+                "name": f"{first_name} {last_name}",
                 "first_name": first_name,
                 "last_name": last_name,
+                "title": "",
+                "prefix": "",
+                "is_client": True,
                 "email_addresses": [
                     {
                         "name": "Work",
@@ -263,6 +290,9 @@ def create_clio_contact(full_name, email, phone, state):
                         "number": phone
                     }
                 ]
+            },
+            "meta": {
+                "type": "Person"  # This is the correct place for the Person/Company type
             }
         }
     }
