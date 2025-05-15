@@ -115,31 +115,39 @@ def clio_callback():
     session['clio_token'] = access_token
     session['clio_refresh_token'] = refresh_token
     
-    # Store tokens in database
-    from models import ApiConfig
-    from app import db
+    # Store tokens in database using raw SQL to avoid circular imports
+    import sqlite3
+    import psycopg2
+    import os
+    
+    # Use PostgreSQL connection from environment variable
+    db_url = os.environ.get("DATABASE_URL")
+    conn = psycopg2.connect(db_url)
+    cursor = conn.cursor()
     
     # Check if Clio config exists
-    clio_config = ApiConfig.query.filter_by(service='clio').first()
+    cursor.execute("SELECT id FROM api_configs WHERE service = 'clio'")
+    clio_config = cursor.fetchone()
+    
     if clio_config:
         # Update existing config
-        clio_config.oauth_token = access_token
-        clio_config.refresh_token = refresh_token
+        cursor.execute(
+            "UPDATE api_configs SET oauth_token = %s, refresh_token = %s WHERE service = 'clio'",
+            (access_token, refresh_token)
+        )
     else:
         # Create new config
-        clio_config = ApiConfig(
-            service='clio',
-            api_key=CLIO_CLIENT_ID,
-            api_secret=CLIO_CLIENT_SECRET,
-            base_url=CLIO_API_BASE,
-            oauth_token=access_token,
-            refresh_token=refresh_token,
-            is_active=True
+        cursor.execute(
+            """INSERT INTO api_configs 
+               (service, api_key, api_secret, base_url, oauth_token, refresh_token, is_active, created_at, updated_at) 
+               VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())""",
+            ('clio', CLIO_CLIENT_ID, CLIO_CLIENT_SECRET, CLIO_API_BASE, access_token, refresh_token, True)
         )
-        db.session.add(clio_config)
     
     # Save changes to database
-    db.session.commit()
+    conn.commit()
+    cursor.close()
+    conn.close()
 
     return redirect(url_for('index'))
 
