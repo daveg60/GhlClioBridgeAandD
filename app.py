@@ -108,8 +108,38 @@ def clio_callback():
         return jsonify({"error": "Failed to get access token", "details": response.text}), 400
 
     token_info = response.json()
-    session['clio_token'] = token_info.get('access_token')
-    session['clio_refresh_token'] = token_info.get('refresh_token')
+    access_token = token_info.get('access_token')
+    refresh_token = token_info.get('refresh_token')
+    
+    # Store tokens in session
+    session['clio_token'] = access_token
+    session['clio_refresh_token'] = refresh_token
+    
+    # Store tokens in database
+    from models import ApiConfig
+    from app import db
+    
+    # Check if Clio config exists
+    clio_config = ApiConfig.query.filter_by(service='clio').first()
+    if clio_config:
+        # Update existing config
+        clio_config.oauth_token = access_token
+        clio_config.refresh_token = refresh_token
+    else:
+        # Create new config
+        clio_config = ApiConfig(
+            service='clio',
+            api_key=CLIO_CLIENT_ID,
+            api_secret=CLIO_CLIENT_SECRET,
+            base_url=CLIO_API_BASE,
+            oauth_token=access_token,
+            refresh_token=refresh_token,
+            is_active=True
+        )
+        db.session.add(clio_config)
+    
+    # Save changes to database
+    db.session.commit()
 
     return redirect(url_for('index'))
 
