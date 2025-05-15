@@ -409,6 +409,100 @@ def create_clio_contact(full_name, email, phone, state):
 
     return response.json()
 
+def create_clio_matter(contact_data, practice_area, description):
+    """Create a matter in Clio linked to the provided contact"""
+    # Check if we have a valid contact
+    if "error" in contact_data:
+        return {"error": "Cannot create matter without valid contact", "details": contact_data["error"]}
+
+    # Extract contact ID
+    contact_id = None
+    if "data" in contact_data and "id" in contact_data["data"]:
+        contact_id = contact_data["data"]["id"]
+    else:
+        print("❌ Unable to find contact ID in response:", json.dumps(contact_data, indent=2)[:500])
+        return {"error": "Contact ID not found in contact data"}
+
+    # Get token from session
+    clio_token = session.get('clio_token')
+    if not clio_token:
+        return {"error": "No Clio token available"}
+
+    # Prepare matter data according to API docs
+    matter_data = {
+        "data": {
+            "type": "matters",
+            "attributes": {
+                "display_number": f"GHL-{contact_id}",
+                "description": description or "Lead from GoHighLevel",
+                "status": "Open"
+            },
+            "relationships": {
+                "client": {
+                    "data": {
+                        "type": "contacts",  # This should match the type from contact creation
+                        "id": contact_id
+                    }
+                }
+            }
+        }
+    }
+
+    # Add practice area if provided and not empty/None
+    if practice_area and practice_area != "Other":
+        matter_data["data"]["attributes"]["practice_area"] = practice_area
+
+    # Make API request to Clio
+    headers = {
+        "Authorization": f"Bearer {clio_token}",
+        "Content-Type": "application/json"
+    }
+
+    # Debug output
+    print(f"✅ Sending matter data to Clio: {json.dumps(matter_data, indent=2)}")
+
+    response = requests.post(
+        f"{CLIO_API_BASE}/matters",
+        headers=headers,
+        json=matter_data
+    )
+
+    # Log the response
+    print(f"✅ Clio API matter response status: {response.status_code}")
+    print(f"✅ Clio API matter response: {response.text[:200]}...")  # Log first 200 chars
+
+    if response.status_code not in [200, 201]:
+        print(f"❌ Error creating Clio matter: {response.text}")
+
+        # Try to adapt to errors
+        try:
+            error_json = response.json()
+            error_message = str(error_json)
+            print(f"❌ Matter error details: {error_message}")
+
+            # If there's an issue with the type in the relationship, try an alternative
+            if "type" in error_message and "relationships" in error_message:
+                print("🔄 Trying alternative relationship type...")
+
+                # Try with "people" type instead
+                matter_data["data"]["relationships"]["client"]["data"]["type"] = "people"
+
+                response = requests.post(
+                    f"{CLIO_API_BASE}/matters",
+                    headers=headers,
+                    json=matter_data
+                )
+
+                print(f"✅ Alternative matter response: {response.status_code}")
+                print(f"✅ Alternative matter response text: {response.text[:200]}...")
+        except Exception as e:
+            print(f"❌ Error processing matter response: {str(e)}")
+
+    if response.status_code not in [200, 201]:
+        return {"error": "Failed to create matter", "details": response.text}
+
+    return response.json()
+
 # Main entry point
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
