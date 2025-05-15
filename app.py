@@ -399,7 +399,7 @@ def add_test_transaction():
 def create_clio_contact(full_name, email, phone, state):
     """Create a contact in Clio using the exact format required by Clio API"""
     # Flag to use mock data for development/testing
-    USE_MOCK_DATA = True  # Set to False in production
+    USE_MOCK_DATA = False  # Set to False in production
     
     # Parse name 
     name_parts = full_name.split(' ')
@@ -441,12 +441,14 @@ def create_clio_contact(full_name, email, phone, state):
         }
         return mock_contact
 
-    # Final attempt with "data" at top level and type inside of it
+    # Based on Clio API documentation and error messages, this is the structure
+    # https://app.clio.com/api/v4/documentation#/Contacts/createContact
     contact_data = {
         "data": {
             "type": "contacts",
+            # Contact subtype must be provided in a separate field
+            "subtype": "Person", # This is the field that was missing - it's not 'type' inside attributes
             "attributes": {
-                "type": "Person",  # Setting type in attributes
                 "first_name": first_name,
                 "last_name": last_name,
                 "is_client": True,
@@ -505,7 +507,7 @@ def create_clio_contact(full_name, email, phone, state):
 def create_clio_matter(contact_data, practice_area, description):
     """Create a matter in Clio"""
     # Flag to use mock data for development/testing
-    USE_MOCK_DATA = True  # Set to False in production
+    USE_MOCK_DATA = False  # Set to False in production
     
     # Check if we have a valid contact - for mock data we'll still proceed
     if "error" in contact_data and not USE_MOCK_DATA:
