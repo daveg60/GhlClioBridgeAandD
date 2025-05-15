@@ -69,7 +69,7 @@ def extract_practice_area(description):
 def index():
     """Homepage with status and login link"""
     clio_token = None
-
+    
     # First check session
     if 'clio_token' in session:
         clio_token = session['clio_token']
@@ -90,7 +90,7 @@ def index():
             conn.close()
         except Exception as e:
             print(f"Error checking database for Clio token: {str(e)}")
-
+    
     if clio_token:
         return jsonify({
             "status": "connected",
@@ -133,25 +133,25 @@ def clio_callback():
     token_info = response.json()
     access_token = token_info.get('access_token')
     refresh_token = token_info.get('refresh_token')
-
+    
     # Store tokens in session
     session['clio_token'] = access_token
     session['clio_refresh_token'] = refresh_token
-
+    
     # Store tokens in database using raw SQL to avoid circular imports
     import sqlite3
     import psycopg2
     import os
-
+    
     # Use PostgreSQL connection from environment variable
     db_url = os.environ.get("DATABASE_URL")
     conn = psycopg2.connect(db_url)
     cursor = conn.cursor()
-
+    
     # Check if Clio config exists
     cursor.execute("SELECT id FROM api_configs WHERE service = 'clio'")
     clio_config = cursor.fetchone()
-
+    
     if clio_config:
         # Update existing config
         cursor.execute(
@@ -166,7 +166,7 @@ def clio_callback():
                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())""",
             ('clio', CLIO_CLIENT_ID, CLIO_CLIENT_SECRET, CLIO_API_BASE, access_token, refresh_token, True)
         )
-
+    
     # Save changes to database
     conn.commit()
     cursor.close()
@@ -187,7 +187,7 @@ def ghl_webhook():
         email = data.get("email", "")
         phone = data.get("phone", "")
         case_description = ""
-        state = ""
+        state = data.get("state", "")
 
         # Try to extract case description from customData
         if "customData" in data and isinstance(data["customData"], dict):
@@ -208,7 +208,7 @@ def ghl_webhook():
 
         # Check if we're authenticated with Clio (either via session or database)
         clio_token = None
-
+        
         # First check session
         if 'clio_token' in session:
             clio_token = session['clio_token']
@@ -229,7 +229,7 @@ def ghl_webhook():
                 conn.close()
             except Exception as e:
                 print(f"Error checking database for Clio token: {str(e)}")
-
+        
         if clio_token:
             # Create contact in Clio
             contact_data = create_clio_contact(full_name, email, phone, state)
@@ -266,50 +266,40 @@ def ping():
 
 # Clio API Functions
 def create_clio_contact(full_name, email, phone, state):
-    """Create a person contact in Clio"""
+    """Create a contact in Clio using the exact format required by Clio API"""
     # Parse name
     name_parts = full_name.split(' ')
     first_name = name_parts[0] if name_parts else ""
     last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ""
 
-    # Get token from session
-    clio_token = session.get('clio_token')
-    if not clio_token:
-        return {"error": "No Clio token available"}
-
-    # Prepare person data according to API docs
-    person_data = {
+    # Let's try a simpler approach focusing on exactly what Clio wants
+    # Based on the errors, we need "Person" at the top level type
+    contact_data = {
         "data": {
-            "type": "contacts",  # Still using contacts as the type
+            "type": "Person",
             "attributes": {
                 "first_name": first_name,
                 "last_name": last_name,
-                "is_client": True
+                "is_client": True,
+                "email_addresses": [
+                    {
+                        "name": "Work",
+                        "address": email
+                    }
+                ],
+                "phone_numbers": [
+                    {
+                        "name": "Work",
+                        "number": phone
+                    }
+                ]
             }
         }
     }
-
-    # Add email if provided
-    if email:
-        person_data["data"]["attributes"]["email_addresses"] = [
-            {
-                "name": "Work",
-                "address": email
-            }
-        ]
-
-    # Add phone if provided
-    if phone:
-        person_data["data"]["attributes"]["phone_numbers"] = [
-            {
-                "name": "Work",
-                "number": phone
-            }
-        ]
-
+    
     # Add state if available
     if state:
-        person_data["data"]["attributes"]["addresses"] = [
+        contact_data["data"]["attributes"]["addresses"] = [
             {
                 "name": "Home",
                 "state": state,
@@ -319,128 +309,101 @@ def create_clio_contact(full_name, email, phone, state):
 
     # Make API request to Clio
     headers = {
-        "Authorization": f"Bearer {clio_token}",
+        "Authorization": f"Bearer {session['clio_token']}",
         "Content-Type": "application/json"
     }
-
-    # Debug output
-    print(f"✅ Sending contact data to Clio: {json.dumps(person_data, indent=2)}")
-
-    # First try - without specifying contact type
+    
+    # Send to contacts endpoint
+    print(f"✅ Sending to Clio API: {json.dumps(contact_data, indent=2)}")
     response = requests.post(
         f"{CLIO_API_BASE}/contacts",
         headers=headers,
-        json=person_data
+        json=contact_data
     )
-
-    # Log the response
-    print(f"✅ Clio API response status: {response.status_code}")
-    print(f"✅ Clio API response: {response.text[:200]}...")  # Log first 200 chars to avoid huge logs
-
-    # If that didn't work, try explicitly setting it as a person
+    
+    print(f"✅ Response status: {response.status_code}")
+    print(f"✅ Response headers: {response.headers}")
+    print(f"✅ Response text: {response.text[:200]}...")
+    
     if response.status_code not in [200, 201]:
-        print("❌ First attempt failed, trying explicitly as a person...")
-
-        try:
-            # Try to find clues in the error message
-            error_json = response.json()
-            error_message = str(error_json)
-            print(f"❌ Error message details: {error_message}")
-
-            # Try different approaches based on error
-            if "type" in error_message or "Person" in error_message or "Company" in error_message:
-                # Try approach 1: with specific endpoint
-                print("🔄 Trying approach 1: using people endpoint")
-
-                # Modify the request to use people endpoint
-                person_data["data"]["type"] = "people"
-
-                response = requests.post(
-                    f"{CLIO_API_BASE}/people",
-                    headers=headers,
-                    json=person_data
-                )
-
-                print(f"✅ Approach 1 response: {response.status_code}")
-                print(f"✅ Approach 1 response text: {response.text[:200]}...")
-
-                if response.status_code not in [200, 201]:
-                    # Try approach 2: with special attributes
-                    print("🔄 Trying approach 2: using contact_type_id")
-
-                    # Revert to original endpoint
-                    person_data["data"]["type"] = "contacts"
-                    # Add contact_type_id
-                    person_data["data"]["attributes"]["contact_type_id"] = 1
-
-                    response = requests.post(
-                        f"{CLIO_API_BASE}/contacts",
-                        headers=headers,
-                        json=person_data
-                    )
-
-                    print(f"✅ Approach 2 response: {response.status_code}")
-                    print(f"✅ Approach 2 response text: {response.text[:200]}...")
-
-                    if response.status_code not in [200, 201]:
-                        # Try approach 3: with nested type
-                        print("🔄 Trying approach 3: using nested type attribute")
-
-                        # Remove contact_type_id and try a different approach
-                        del person_data["data"]["attributes"]["contact_type_id"]
-                        person_data["data"]["meta"] = {"type": "Person"}
-
-                        response = requests.post(
-                            f"{CLIO_API_BASE}/contacts",
-                            headers=headers,
-                            json=person_data
-                        )
-
-                        print(f"✅ Approach 3 response: {response.status_code}")
-                        print(f"✅ Approach 3 response text: {response.text[:200]}...")
-
-        except Exception as e:
-            print(f"❌ Error processing response: {str(e)}")
-
-    # Check if any of the attempts succeeded
-    if response.status_code not in [200, 201]:
-        print(f"❌ All attempts to create contact failed")
-        return {"error": "Failed to create contact", "details": response.text}
-
+        # If that doesn't work, try the alternative format with contact endpoint
+        print("❌ First approach failed, trying alternative format...")
+        
+        alt_contact_data = {
+            "data": {
+                "type": "contacts",  # Use contacts as type
+                "attributes": {
+                    "type": "Person",  # Use Person as attribute type
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "is_client": True,
+                    "email_addresses": [
+                        {
+                            "name": "Work",
+                            "address": email
+                        }
+                    ],
+                    "phone_numbers": [
+                        {
+                            "name": "Work",
+                            "number": phone
+                        }
+                    ]
+                }
+            }
+        }
+        
+        # Add state if available
+        if state:
+            alt_contact_data["data"]["attributes"]["addresses"] = [
+                {
+                    "name": "Home",
+                    "state": state,
+                    "country": "US"
+                }
+            ]
+        
+        print(f"✅ Sending alternative format: {json.dumps(alt_contact_data, indent=2)}")
+        response = requests.post(
+            f"{CLIO_API_BASE}/contacts",
+            headers=headers,
+            json=alt_contact_data
+        )
+        
+        print(f"✅ Alternative response status: {response.status_code}")
+        print(f"✅ Alternative response text: {response.text[:200]}...")
+        
+        if response.status_code not in [200, 201]:
+            print(f"❌ Both approaches failed")
+            return {"error": "Failed to create contact", "details": response.text}
+    
     return response.json()
 
 def create_clio_matter(contact_data, practice_area, description):
-    """Create a matter in Clio linked to the provided contact"""
+    """Create a matter in Clio"""
     # Check if we have a valid contact
     if "error" in contact_data:
         return {"error": "Cannot create matter without valid contact", "details": contact_data["error"]}
 
     # Extract contact ID
-    contact_id = None
-    if "data" in contact_data and "id" in contact_data["data"]:
-        contact_id = contact_data["data"]["id"]
-    else:
-        print("❌ Unable to find contact ID in response:", json.dumps(contact_data, indent=2)[:500])
-        return {"error": "Contact ID not found in contact data"}
+    contact_id = contact_data.get("data", {}).get("id")
+    if not contact_id:
+        return {"error": "Cannot create matter without valid contact", "details": "Contact ID not found"}
 
-    # Get token from session
-    clio_token = session.get('clio_token')
-    if not clio_token:
-        return {"error": "No Clio token available"}
-
-    # Prepare matter data according to API docs
+    # Prepare matter data
     matter_data = {
         "data": {
             "type": "matters",
             "attributes": {
                 "display_number": f"GHL-{contact_id}",
                 "description": description or "Lead from GoHighLevel",
-                "status": "Open"
+                "status": "Open",
+                "practice_area": practice_area
             },
             "relationships": {
                 "client": {
                     "data": {
-                        "type": "contacts",  # This should match the type from contact creation
+                        "type": "contacts",
                         "id": contact_id
                     }
                 }
@@ -448,18 +411,11 @@ def create_clio_matter(contact_data, practice_area, description):
         }
     }
 
-    # Add practice area if provided and not empty/None
-    if practice_area and practice_area != "Other":
-        matter_data["data"]["attributes"]["practice_area"] = practice_area
-
     # Make API request to Clio
     headers = {
-        "Authorization": f"Bearer {clio_token}",
+        "Authorization": f"Bearer {session['clio_token']}",
         "Content-Type": "application/json"
     }
-
-    # Debug output
-    print(f"✅ Sending matter data to Clio: {json.dumps(matter_data, indent=2)}")
 
     response = requests.post(
         f"{CLIO_API_BASE}/matters",
@@ -467,38 +423,8 @@ def create_clio_matter(contact_data, practice_area, description):
         json=matter_data
     )
 
-    # Log the response
-    print(f"✅ Clio API matter response status: {response.status_code}")
-    print(f"✅ Clio API matter response: {response.text[:200]}...")  # Log first 200 chars
-
     if response.status_code not in [200, 201]:
         print(f"❌ Error creating Clio matter: {response.text}")
-
-        # Try to adapt to errors
-        try:
-            error_json = response.json()
-            error_message = str(error_json)
-            print(f"❌ Matter error details: {error_message}")
-
-            # If there's an issue with the type in the relationship, try an alternative
-            if "type" in error_message and "relationships" in error_message:
-                print("🔄 Trying alternative relationship type...")
-
-                # Try with "people" type instead
-                matter_data["data"]["relationships"]["client"]["data"]["type"] = "people"
-
-                response = requests.post(
-                    f"{CLIO_API_BASE}/matters",
-                    headers=headers,
-                    json=matter_data
-                )
-
-                print(f"✅ Alternative matter response: {response.status_code}")
-                print(f"✅ Alternative matter response text: {response.text[:200]}...")
-        except Exception as e:
-            print(f"❌ Error processing matter response: {str(e)}")
-
-    if response.status_code not in [200, 201]:
         return {"error": "Failed to create matter", "details": response.text}
 
     return response.json()
