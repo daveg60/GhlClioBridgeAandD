@@ -276,6 +276,9 @@ def create_clio_contact(full_name, email, phone, state):
     contact_data = {
         "data": {
             "type": "contacts",
+            "meta": {
+                "type": "Person"  # This is the required 'Person' or 'Company' type
+            },
             "attributes": {
                 "name": f"{first_name} {last_name}",
                 "first_name": first_name,
@@ -283,7 +286,6 @@ def create_clio_contact(full_name, email, phone, state):
                 "title": "",
                 "prefix": "",
                 "is_client": True,
-                "contact_type_id": 1,  # 1 for Person, 2 for Company
                 "email_addresses": [
                     {
                         "name": "Work",
