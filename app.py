@@ -264,6 +264,137 @@ def ping():
     """Simple health check endpoint"""
     return jsonify({"status": "ok", "message": "Service is running"}), 200
 
+
+@app.route('/api/logs', methods=['GET'])
+def view_logs():
+    """View transaction logs"""
+    try:
+        # Connect to the database
+        import psycopg2
+        db_url = os.environ.get("DATABASE_URL")
+        conn = psycopg2.connect(db_url)
+        cursor = conn.cursor()
+        
+        # Get transaction count
+        cursor.execute("SELECT COUNT(*) FROM transactions")
+        total_count = cursor.fetchone()[0]
+        
+        # Get recent transactions
+        cursor.execute(
+            """SELECT id, source, destination, request_method, request_url, 
+                     response_status, success, created_at 
+              FROM transactions 
+              ORDER BY created_at DESC
+              LIMIT 10"""
+        )
+        
+        transactions = []
+        for t in cursor.fetchall():
+            t_id, source, dest, method, url, status, success, created = t
+            transactions.append({
+                "id": t_id,
+                "source": source,
+                "destination": dest,
+                "method": method,
+                "url": url,
+                "status": status,
+                "success": success,
+                "created_at": created.isoformat() if created else None
+            })
+        
+        # Get error count
+        cursor.execute("SELECT COUNT(*) FROM error_logs")
+        error_count = cursor.fetchone()[0]
+        
+        # Get recent errors
+        cursor.execute(
+            """SELECT id, transaction_id, error_type, error_message, created_at 
+              FROM error_logs 
+              ORDER BY created_at DESC
+              LIMIT 5"""
+        )
+        
+        errors = []
+        for e in cursor.fetchall():
+            e_id, t_id, e_type, message, created = e
+            errors.append({
+                "id": e_id,
+                "transaction_id": t_id,
+                "type": e_type,
+                "message": message,
+                "created_at": created.isoformat() if created else None
+            })
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "status": "success",
+            "total_transactions": total_count,
+            "total_errors": error_count,
+            "recent_transactions": transactions,
+            "recent_errors": errors
+        })
+        
+    except Exception as e:
+        print(f"Error getting logs: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": f"Error getting logs: {str(e)}"
+        }), 500
+
+
+@app.route('/api/add-test-transaction', methods=['POST'])
+def add_test_transaction():
+    """Add a test transaction for development purposes"""
+    try:
+        import psycopg2
+        import json
+        from datetime import datetime
+        
+        # Connect to the database
+        db_url = os.environ.get("DATABASE_URL")
+        conn = psycopg2.connect(db_url)
+        cursor = conn.cursor()
+        
+        # Get data from request or use defaults
+        data = request.json or {}
+        source = data.get('source', 'ghl')
+        destination = data.get('destination', 'clio')
+        
+        # Insert a test transaction
+        cursor.execute(
+            """INSERT INTO transactions
+               (source, destination, request_method, request_url, request_headers,
+                request_body, response_status, response_body, duration_ms, success, created_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               RETURNING id""",
+            (source, destination, 'POST', '/api/test-endpoint', 
+             json.dumps({"Content-Type": "application/json"}),
+             json.dumps({"name": "Test User", "email": "test@example.com"}),
+             200, json.dumps({"id": "test-123", "status": "created"}),
+             150, True, datetime.now())
+        )
+        
+        transaction_id = cursor.fetchone()[0]
+        
+        # Commit the transaction
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Added test transaction with ID: {transaction_id}"
+        })
+        
+    except Exception as e:
+        print(f"Error adding test transaction: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": f"Error adding test transaction: {str(e)}"
+        }), 500
+
 # Clio API Functions
 def create_clio_contact(full_name, email, phone, state):
     """Create a contact in Clio using the exact format required by Clio API"""
