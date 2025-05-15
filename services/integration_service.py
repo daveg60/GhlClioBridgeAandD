@@ -17,6 +17,9 @@ class IntegrationService:
                         response_status, response_headers, response_body, duration_ms, success):
         """Log API transaction to the database"""
         try:
+            # Print debug info
+            print(f"DEBUG INTEGRATION - Logging transaction: {source} -> {destination}, {method} {url}")
+            
             # Create transaction record
             transaction = Transaction(
                 source=source,
@@ -34,8 +37,10 @@ class IntegrationService:
             )
             db.session.add(transaction)
             db.session.commit()
+            print(f"DEBUG INTEGRATION - Transaction logged successfully with ID: {transaction.id}")
             return transaction.id
         except Exception as e:
+            print(f"DEBUG INTEGRATION - Error logging transaction: {str(e)}")
             logger.error(f"Error logging transaction: {str(e)}", exc_info=True)
             db.session.rollback()
             return None
