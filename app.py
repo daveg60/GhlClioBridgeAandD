@@ -441,42 +441,25 @@ def create_clio_contact(full_name, email, phone, state):
         }
         return mock_contact
 
-    # Based on Clio API documentation and error messages, this is the structure
-    # https://app.clio.com/api/v4/documentation#/Contacts/createContact
+    # Using the JSON:API structure with Person as the type
+    # Based on the "Missing required parameter: data" error
     contact_data = {
         "data": {
-            "type": "contacts",
-            # Contact subtype must be provided in a separate field
-            "subtype": "Person", # This is the field that was missing - it's not 'type' inside attributes
+            "type": "Person",
             "attributes": {
-                "first_name": first_name,
-                "last_name": last_name,
-                "is_client": True,
-                "email_addresses": [
-                    {
-                        "name": "Work",
-                        "address": email
-                    }
-                ],
-                "phone_numbers": [
-                    {
-                        "name": "Work",
-                        "number": phone
-                    }
-                ]
+                "name": full_name, 
+                "email": email,
+                "phone": phone
             }
         }
     }
     
     # Add state if available
     if state:
-        contact_data["data"]["attributes"]["addresses"] = [
-            {
-                "name": "Home",
-                "state": state,
-                "country": "US"
-            }
-        ]
+        contact_data["data"]["attributes"]["address"] = {
+            "state": state,
+            "country": "US"
+        }
 
     # Make API request to Clio
     headers = {
