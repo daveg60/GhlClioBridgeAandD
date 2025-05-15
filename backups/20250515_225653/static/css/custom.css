@@ -1,0 +1,219 @@
+/**
+ * GHL API Clio Integration
+ * Custom CSS Styles
+ */
+
+/* General app styles */
+body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.footer {
+    margin-top: auto;
+}
+
+/* Dashboard card improvements */
+.card {
+    border-radius: 0.5rem;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    transition: all 0.3s ease;
+}
+
+.card:hover {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+/* Pre/Code formatting */
+pre {
+    background-color: #1a1a1a;
+    color: #f8f9fa;
+    border-radius: 0.375rem;
+    padding: 1rem;
+    max-height: 400px;
+    overflow: auto;
+}
+
+pre::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+pre::-webkit-scrollbar-track {
+    background: #2c2c2c;
+}
+
+pre::-webkit-scrollbar-thumb {
+    background-color: #666;
+    border-radius: 4px;
+}
+
+/* API endpoint display */
+.api-endpoint {
+    font-family: monospace;
+    background-color: #2c3e50;
+    color: #ecf0f1;
+    border-radius: 0.25rem;
+    padding: 0.5rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Settings page improvements */
+.settings-section {
+    margin-bottom: 2rem;
+}
+
+.form-check-input:checked {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+/* Status badges */
+.status-badge {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 0.5rem;
+}
+
+.status-active {
+    background-color: #198754;
+}
+
+.status-inactive {
+    background-color: #dc3545;
+}
+
+/* Transaction details improvements */
+.transaction-detail-row {
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 0.5rem;
+}
+
+.transaction-detail-label {
+    font-weight: bold;
+    color: #6c757d;
+}
+
+/* Table improvements */
+.table-hover tbody tr:hover {
+    background-color: rgba(13, 110, 253, 0.1);
+}
+
+.table-responsive {
+    overflow-x: auto;
+}
+
+.table-responsive::-webkit-scrollbar {
+    height: 8px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+    background: #2c2c2c;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background-color: #666;
+    border-radius: 4px;
+}
+
+/* Form field improvements */
+.form-control, .form-select {
+    background-color: #1a1a1a;
+    border-color: #444;
+    color: #f8f9fa;
+}
+
+.form-control:focus, .form-select:focus {
+    background-color: #2c2c2c;
+    border-color: #0d6efd;
+    color: #f8f9fa;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* Field mapping colors */
+.mapping-direct {
+    color: #0dcaf0;
+}
+
+.mapping-transform {
+    color: #ffc107;
+}
+
+.mapping-custom {
+    color: #6f42c1;
+}
+
+/* Navbar improvements */
+.navbar {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.navbar-brand {
+    font-weight: bold;
+}
+
+/* Page headings */
+h1 {
+    margin-bottom: 0.5rem;
+    font-weight: 700;
+}
+
+/* JSON formatting in modals */
+.json-key {
+    color: #9cdcfe;
+}
+
+.json-string {
+    color: #ce9178;
+}
+
+.json-number {
+    color: #b5cea8;
+}
+
+.json-boolean {
+    color: #569cd6;
+}
+
+.json-null {
+    color: #569cd6;
+}
+
+/* Custom tooltip style */
+.tooltip {
+    font-size: 0.875rem;
+}
+
+.tooltip-inner {
+    background-color: #343a40;
+    max-width: 300px;
+}
+
+/* Help text styling */
+.help-text {
+    display: inline-block;
+    font-size: 0.875rem;
+    margin-left: 0.5rem;
+    color: #6c757d;
+}
+
+/* Additional responsive adjustments */
+@media (max-width: 768px) {
+    .card-title {
+        font-size: 1.25rem;
+    }
+    
+    h1 {
+        font-size: 1.75rem;
+    }
+    
+    pre {
+        max-height: 250px;
+    }
+}

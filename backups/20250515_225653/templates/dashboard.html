@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - GHL API Clio Integration{% endblock %}
+
+{% block content %}
+<div class="row mb-4 align-items-center">
+    <div class="col">
+        <h1><i class="bi bi-speedometer2 me-2"></i>Dashboard</h1>
+        <p class="text-muted">Monitor your integration performance and status</p>
+    </div>
+    <div class="col-auto">
+        <div class="btn-group" role="group">
+            <button type="button" class="btn btn-outline-primary" id="refresh-dashboard">
+                <i class="bi bi-arrow-clockwise me-2"></i>Refresh
+            </button>
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#syncModal">
+                <i class="bi bi-cloud-arrow-up-down me-2"></i>Sync Now
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Status Cards -->
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card text-white bg-primary h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="card-title text-white-50">Total Transactions</h6>
+                        <h2 class="card-text display-5">{{ total_transactions }}</h2>
+                    </div>
+                    <i class="bi bi-graph-up display-5 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card text-white bg-success h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="card-title text-white-50">Successful</h6>
+                        <h2 class="card-text display-5">{{ successful_transactions }}</h2>
+                    </div>
+                    <i class="bi bi-check-circle display-5 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card text-white bg-danger h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="card-title text-white-50">Failed</h6>
+                        <h2 class="card-text display-5">{{ failed_transactions }}</h2>
+                    </div>
+                    <i class="bi bi-x-circle display-5 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card text-white bg-info h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="card-title text-white-50">Success Rate</h6>
+                        <h2 class="card-text display-5">{{ success_rate|round(1) }}%</h2>
+                    </div>
+                    <i class="bi bi-percent display-5 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- API Status -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-hdd-network me-2"></i>API Connection Status
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="me-3">
+                        <span class="badge rounded-pill {{ 'bg-success' if ghl_config and ghl_config.is_active else 'bg-danger' }} p-2">
+                            <i class="bi {{ 'bi-check-lg' if ghl_config and ghl_config.is_active else 'bi-x-lg' }}"></i>
+                        </span>
+                    </div>
+                    <div>
+                        <h6 class="mb-0">GoHighLevel</h6>
+                        <small class="text-muted">{{ 'Configured & Active' if ghl_config and ghl_config.is_active else 'Not Configured' }}</small>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center">
+                    <div class="me-3">
+                        <span class="badge rounded-pill {{ 'bg-success' if clio_config and clio_config.is_active else 'bg-danger' }} p-2">
+                            <i class="bi {{ 'bi-check-lg' if clio_config and clio_config.is_active else 'bi-x-lg' }}"></i>
+                        </span>
+                    </div>
+                    <div>
+                        <h6 class="mb-0">Clio</h6>
+                        <small class="text-muted">{{ 'Configured & Active' if clio_config and clio_config.is_active else 'Not Configured' }}</small>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent text-end">
+                <a href="{{ url_for('settings') }}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-gear me-1"></i>Configure
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-arrow-left-right me-2"></i>Webhook Endpoints
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">GoHighLevel Webhook URL</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" value="{{ request.url_root }}api/ghl-webhook" readonly>
+                        <button class="btn btn-outline-secondary copy-btn" type="button" data-clipboard-text="{{ request.url_root }}api/ghl-webhook">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                    </div>
+                    <small class="text-muted">Use this URL in GoHighLevel to send webhooks to this integration.</small>
+                </div>
+                <div>
+                    <label class="form-label">Clio Webhook URL</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" value="{{ request.url_root }}api/clio-webhook" readonly>
+                        <button class="btn btn-outline-secondary copy-btn" type="button" data-clipboard-text="{{ request.url_root }}api/clio-webhook">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                    </div>
+                    <small class="text-muted">Use this URL in Clio to send webhooks to this integration.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Errors -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Recent Errors
+                </h5>
+                <a href="{{ url_for('view_logs') }}" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Error Type</th>
+                                <th>Message</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if recent_errors %}
+                                {% for error in recent_errors %}
+                                <tr>
+                                    <td>{{ error.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                    <td>
+                                        <span class="badge bg-danger">{{ error.error_type }}</span>
+                                    </td>
+                                    <td>{{ error.error_message }}</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="3" class="text-center py-4">
+                                        <i class="bi bi-emoji-smile text-success me-2"></i>No recent errors! Everything is running smoothly.
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sync Modal -->
+<div class="modal fade" id="syncModal" tabindex="-1" aria-labelledby="syncModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="syncModalLabel">Sync Data</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="syncForm">
+                    <div class="mb-3">
+                        <label for="syncDirection" class="form-label">Sync Direction</label>
+                        <select class="form-select" id="syncDirection" required>
+                            <option value="ghl_to_clio">GoHighLevel to Clio</option>
+                            <option value="clio_to_ghl">Clio to GoHighLevel</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="entityType" class="form-label">Entity Type</label>
+                        <select class="form-select" id="entityType" required>
+                            <option value="contact">Contacts</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="entityId" class="form-label">Entity ID (Optional)</label>
+                        <input type="text" class="form-control" id="entityId" placeholder="Leave blank to sync all">
+                        <div class="form-text">If provided, only this specific entity will be synced.</div>
+                    </div>
+                </form>
+                <div id="syncResult" class="d-none">
+                    <div class="alert" role="alert" id="syncAlert"></div>
+                </div>
+                <div id="syncSpinner" class="text-center d-none">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Syncing data, please wait...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="startSyncBtn">Start Sync</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle copying webhook URLs
+    const copyButtons = document.querySelectorAll('.copy-btn');
+    copyButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const textToCopy = this.getAttribute('data-clipboard-text');
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                const originalContent = this.innerHTML;
+                this.innerHTML = '<i class="bi bi-check-lg"></i>';
+                setTimeout(() => {
+                    this.innerHTML = originalContent;
+                }, 2000);
+            });
+        });
+    });
+    
+    // Handle refresh dashboard
+    document.getElementById('refresh-dashboard').addEventListener('click', function() {
+        window.location.reload();
+    });
+    
+    // Handle sync data
+    document.getElementById('startSyncBtn').addEventListener('click', function() {
+        const syncForm = document.getElementById('syncForm');
+        const syncResult = document.getElementById('syncResult');
+        const syncAlert = document.getElementById('syncAlert');
+        const syncSpinner = document.getElementById('syncSpinner');
+        
+        const direction = document.getElementById('syncDirection').value;
+        const entityType = document.getElementById('entityType').value;
+        const entityId = document.getElementById('entityId').value;
+        
+        // Show spinner, hide result
+        syncForm.classList.add('d-none');
+        syncResult.classList.add('d-none');
+        syncSpinner.classList.remove('d-none');
+        document.getElementById('startSyncBtn').disabled = true;
+        
+        // Make API request
+        fetch('/api/sync-data', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                direction: direction,
+                entity_type: entityType,
+                entity_id: entityId || null
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Hide spinner, show result
+            syncSpinner.classList.add('d-none');
+            syncResult.classList.remove('d-none');
+            
+            if (data.status === 'success') {
+                syncAlert.classList.add('alert-success');
+                syncAlert.classList.remove('alert-danger');
+                syncAlert.innerHTML = `<i class="bi bi-check-circle-fill me-2"></i>${data.message || 'Sync completed successfully!'}`;
+            } else {
+                syncAlert.classList.add('alert-danger');
+                syncAlert.classList.remove('alert-success');
+                syncAlert.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-2"></i>${data.message || 'An error occurred during sync.'}`;
+            }
+            
+            // Re-enable button
+            document.getElementById('startSyncBtn').disabled = false;
+        })
+        .catch(error => {
+            // Hide spinner, show result
+            syncSpinner.classList.add('d-none');
+            syncResult.classList.remove('d-none');
+            
+            syncAlert.classList.add('alert-danger');
+            syncAlert.classList.remove('alert-success');
+            syncAlert.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-2"></i>Error: ${error.message || 'An unexpected error occurred.'}`;
+            
+            // Re-enable button
+            document.getElementById('startSyncBtn').disabled = false;
+            console.error('Error:', error);
+        });
+    });
+    
+    // Reset modal on close
+    const syncModal = document.getElementById('syncModal');
+    syncModal.addEventListener('hidden.bs.modal', function() {
+        document.getElementById('syncForm').classList.remove('d-none');
+        document.getElementById('syncResult').classList.add('d-none');
+        document.getElementById('syncSpinner').classList.add('d-none');
+        document.getElementById('startSyncBtn').disabled = false;
+    });
+});
+</script>
+{% endblock %}

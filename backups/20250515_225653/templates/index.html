@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block title %}GHL API Clio Integration{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card shadow-sm mb-4">
+            <div class="card-body p-5 text-center">
+                <i class="bi bi-shuffle display-1 mb-4 text-info"></i>
+                <h1 class="display-4">GHL API Clio Integration</h1>
+                <p class="lead text-muted mb-4">Connect and sync data between GoHighLevel and Clio platforms</p>
+                <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-lg px-4">
+                        <i class="bi bi-graph-up me-2"></i>View Dashboard
+                    </a>
+                    <a href="{{ url_for('settings') }}" class="btn btn-outline-secondary btn-lg px-4">
+                        <i class="bi bi-gear me-2"></i>Configure
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-md-6">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="bi bi-arrow-up-circle me-2 text-primary"></i>GoHighLevel to Clio</h5>
+                        <p class="card-text">Sync contacts, opportunities, and activities from GoHighLevel to your Clio platform.</p>
+                        <ul class="list-unstyled">
+                            <li><i class="bi bi-check-circle-fill text-success me-2"></i>Contact synchronization</li>
+                            <li><i class="bi bi-check-circle-fill text-success me-2"></i>Opportunity to matter conversion</li>
+                            <li><i class="bi bi-check-circle-fill text-success me-2"></i>Notes and activities syncing</li>
+                        </ul>
+                    </div>
+                    <div class="card-footer bg-transparent border-0 d-grid">
+                        <button class="btn btn-outline-primary" id="test-ghl-connection">
+                            <i class="bi bi-lightning-charge me-2"></i>Test GHL Connection
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="bi bi-arrow-down-circle me-2 text-info"></i>Clio to GoHighLevel</h5>
+                        <p class="card-text">Sync contacts, matters, and tasks from Clio to your GoHighLevel platform.</p>
+                        <ul class="list-unstyled">
+                            <li><i class="bi bi-check-circle-fill text-success me-2"></i>Contact synchronization</li>
+                            <li><i class="bi bi-check-circle-fill text-success me-2"></i>Matter to opportunity conversion</li>
+                            <li><i class="bi bi-check-circle-fill text-success me-2"></i>Task and note syncing</li>
+                        </ul>
+                    </div>
+                    <div class="card-footer bg-transparent border-0 d-grid">
+                        <button class="btn btn-outline-info" id="test-clio-connection">
+                            <i class="bi bi-lightning-charge me-2"></i>Test Clio Connection
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mt-4">
+            <div class="card-body">
+                <h3 class="card-title"><i class="bi bi-gear-wide-connected me-2"></i>How It Works</h3>
+                <div class="row">
+                    <div class="col-md-4 text-center py-3">
+                        <div class="p-3">
+                            <i class="bi bi-1-circle display-5 text-primary mb-3"></i>
+                            <h5>Configure API Connections</h5>
+                            <p class="text-muted">Set up your API keys and credentials for both platforms in the settings.</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center py-3">
+                        <div class="p-3">
+                            <i class="bi bi-2-circle display-5 text-primary mb-3"></i>
+                            <h5>Map Data Fields</h5>
+                            <p class="text-muted">Define how fields should map between the two platforms.</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center py-3">
+                        <div class="p-3">
+                            <i class="bi bi-3-circle display-5 text-primary mb-3"></i>
+                            <h5>Monitor & Manage</h5>
+                            <p class="text-muted">Use the dashboard to monitor sync status and manage errors.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Connection Test Modal -->
+<div class="modal fade" id="connectionTestModal" tabindex="-1" aria-labelledby="connectionTestModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="connectionTestModalLabel">Testing Connection</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="connection-test-loading" class="text-center">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p>Testing connection to <span id="service-name"></span>...</p>
+                </div>
+                <div id="connection-test-result" class="d-none">
+                    <div id="result-success" class="d-none">
+                        <div class="text-center mb-3">
+                            <i class="bi bi-check-circle-fill text-success display-1"></i>
+                        </div>
+                        <h4 class="text-center text-success">Connection Successful!</h4>
+                        <p class="text-center" id="success-message"></p>
+                    </div>
+                    <div id="result-error" class="d-none">
+                        <div class="text-center mb-3">
+                            <i class="bi bi-x-circle-fill text-danger display-1"></i>
+                        </div>
+                        <h4 class="text-center text-danger">Connection Failed</h4>
+                        <p class="text-center" id="error-message"></p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const testGHLBtn = document.getElementById('test-ghl-connection');
+    const testClioBtn = document.getElementById('test-clio-connection');
+    const modal = new bootstrap.Modal(document.getElementById('connectionTestModal'));
+    
+    testGHLBtn.addEventListener('click', function() {
+        testConnection('ghl');
+    });
+    
+    testClioBtn.addEventListener('click', function() {
+        testConnection('clio');
+    });
+    
+    function testConnection(service) {
+        // Reset modal
+        document.getElementById('connection-test-loading').classList.remove('d-none');
+        document.getElementById('connection-test-result').classList.add('d-none');
+        document.getElementById('result-success').classList.add('d-none');
+        document.getElementById('result-error').classList.add('d-none');
+        
+        // Set service name
+        document.getElementById('service-name').textContent = service === 'ghl' ? 'GoHighLevel' : 'Clio';
+        
+        // Show modal
+        modal.show();
+        
+        // Make API request
+        fetch('/api/test-connection', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ service: service })
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Hide loading
+            document.getElementById('connection-test-loading').classList.add('d-none');
+            document.getElementById('connection-test-result').classList.remove('d-none');
+            
+            if (data.status === 'success') {
+                document.getElementById('result-success').classList.remove('d-none');
+                document.getElementById('success-message').textContent = data.message;
+            } else {
+                document.getElementById('result-error').classList.remove('d-none');
+                document.getElementById('error-message').textContent = data.message;
+            }
+        })
+        .catch(error => {
+            // Hide loading
+            document.getElementById('connection-test-loading').classList.add('d-none');
+            document.getElementById('connection-test-result').classList.remove('d-none');
+            document.getElementById('result-error').classList.remove('d-none');
+            document.getElementById('error-message').textContent = 'An error occurred while testing the connection.';
+            console.error('Error:', error);
+        });
+    }
+});
+</script>
+{% endblock %}
