@@ -206,8 +206,8 @@ def ghl_webhook():
         # Extract practice area
         practice_area = extract_practice_area(case_description or transcription)
 
-        # DEVELOPMENT MODE: For testing purposes
-        USE_TESTING_MODE = True
+        # Set to False to test with actual Clio API
+        USE_TESTING_MODE = False
         
         if USE_TESTING_MODE:
             print("⚠️ Using testing mode for webhook processing")
@@ -406,7 +406,7 @@ def add_test_transaction():
 def create_clio_contact(full_name, email, phone, state):
     """Create a contact in Clio using the exact format required by Clio API"""
     # Flag to use mock data for development/testing
-    USE_MOCK_DATA = True  # Set to False in production
+    USE_MOCK_DATA = False  # Set to False in production
 
     # Parse name 
     name_parts = full_name.split(' ')
@@ -448,15 +448,30 @@ def create_clio_contact(full_name, email, phone, state):
         }
         return mock_contact
 
-    # Using the JSON:API structure with Person as the type
-    # Based on the "Missing required parameter: data" error
+    # Using the JSON:API structure required by Clio
+    # The type must be in the attributes section, not at the data level
     contact_data = {
         "data": {
-            "type": "Person",
+            "type": "contacts",
             "attributes": {
-                "name": full_name, 
-                "email": email,
-                "phone": phone
+                "name": full_name,
+                "type": "Person",  # This must be either "Person" or "Company"
+                "first_name": first_name,
+                "last_name": last_name,
+                "email_addresses": [
+                    {
+                        "name": "Work",
+                        "address": email,
+                        "default": True
+                    }
+                ],
+                "phone_numbers": [
+                    {
+                        "name": "Work",
+                        "number": phone,
+                        "default": True
+                    }
+                ]
             }
         }
     }
@@ -469,8 +484,11 @@ def create_clio_contact(full_name, email, phone, state):
         }
 
     # Make API request to Clio
+    # Use token from session or request from user if not available
+    clio_token = session.get('clio_token', '')
+    
     headers = {
-        "Authorization": f"Bearer {session['clio_token']}",
+        "Authorization": f"Bearer {clio_token}",
         "Content-Type": "application/json"
     }
 
@@ -497,7 +515,7 @@ def create_clio_contact(full_name, email, phone, state):
 def create_clio_matter(contact_data, practice_area, description):
     """Create a matter in Clio"""
     # Flag to use mock data for development/testing
-    USE_MOCK_DATA = True  # Set to False in production
+    USE_MOCK_DATA = False  # Set to False in production
 
     # Check if we have a valid contact - for mock data we'll still proceed
     if "error" in contact_data and not USE_MOCK_DATA:
