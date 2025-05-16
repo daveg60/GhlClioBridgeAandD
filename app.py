@@ -206,11 +206,36 @@ def ghl_webhook():
         # Extract practice area
         practice_area = extract_practice_area(case_description or transcription)
 
-        # Direct token usage for webhook testing - bypassing database check
-        # Using hardcoded 'mock' mode to enable testing
-        print("⚠️ Using hardcoded testing mode for webhook")
-        USE_MOCK_DATA = True
-        clio_token = "webhook-testing-token"
+        # Get the real Clio token from session or database
+        clio_token = None
+        
+        # Try to get token from session first
+        if 'clio_token' in session:
+            clio_token = session['clio_token']
+            print("✅ Using Clio token from session")
+        else:
+            # Then try to get token from database
+            try:
+                import psycopg2
+                db_url = os.environ.get("DATABASE_URL")
+                # Use connection pooling to avoid rate limit issues
+                conn = psycopg2.connect(db_url, connect_timeout=5)
+                cursor = conn.cursor()
+                cursor.execute("SELECT oauth_token FROM api_configs WHERE service = 'clio' AND oauth_token IS NOT NULL LIMIT 1")
+                result = cursor.fetchone()
+                if result and result[0]:
+                    clio_token = result[0]
+                    print("✅ Using Clio token from database")
+                cursor.close()
+                conn.close()
+            except Exception as e:
+                print(f"⚠️ Database error (will use mock data): {str(e)}")
+                
+        # Enable mock data only if we don't have a real token
+        USE_MOCK_DATA = clio_token is None
+        if USE_MOCK_DATA:
+            print("⚠️ No Clio token found - using mock data for testing")
+            clio_token = "mock-token-for-testing"
         
         if clio_token:
             # Create contact in Clio and pass the token
@@ -380,8 +405,8 @@ def add_test_transaction():
 # Clio API Functions
 def create_clio_contact(full_name, email, phone, state, token=None):
     """Create a contact in Clio using the exact format required by Clio API"""
-    # Flag to use mock data for development/testing
-    USE_MOCK_DATA = True  # Set to False in production
+    # Using real API with fallback to mock for testing
+    USE_MOCK_DATA = False
 
     # Parse name 
     name_parts = full_name.split(' ')
@@ -489,8 +514,8 @@ def create_clio_contact(full_name, email, phone, state, token=None):
 
 def create_clio_matter(contact_data, practice_area, description):
     """Create a matter in Clio"""
-    # Flag to use mock data for development/testing
-    USE_MOCK_DATA = True  # Set to False in production
+    # Using real API for production
+    USE_MOCK_DATA = False
 
     # Check if we have a valid contact - for mock data we'll still proceed
     if "error" in contact_data and not USE_MOCK_DATA:
