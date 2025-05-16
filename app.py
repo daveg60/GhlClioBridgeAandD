@@ -399,8 +399,8 @@ def add_test_transaction():
 def create_clio_contact(full_name, email, phone, state):
     """Create a contact in Clio using the exact format required by Clio API"""
     # Flag to use mock data for development/testing
-    USE_MOCK_DATA = False  # Set to False in production
-    
+    USE_MOCK_DATA = True  # Set to False in production
+
     # Parse name 
     name_parts = full_name.split(' ')
     first_name = name_parts[0] if name_parts else ""
@@ -441,56 +441,97 @@ def create_clio_contact(full_name, email, phone, state):
         }
         return mock_contact
 
-    # Using the JSON:API structure with Person as the type
-    # Based on the "Missing required parameter: data" error
+    # Get token from session
+    clio_token = session.get('clio_token')
+    if not clio_token:
+        return {"error": "No Clio token available"}
+
+    # Structure based on JSON:API specification
+    # Strictly following Clio API documentation
     contact_data = {
         "data": {
-            "type": "Person",
+            "type": "contacts",
             "attributes": {
-                "name": full_name, 
-                "email": email,
-                "phone": phone
+                "name": full_name,
+                "first_name": first_name,
+                "last_name": last_name,
+                "title": "",
+                "prefix": "",
+                "type": "Person",
+                "is_client": True
             }
         }
     }
-    
+
+    # Add email if provided
+    if email:
+        contact_data["data"]["attributes"]["email_addresses"] = [
+            {
+                "name": "Work",
+                "address": email
+            }
+        ]
+
+    # Add phone if provided
+    if phone:
+        contact_data["data"]["attributes"]["phone_numbers"] = [
+            {
+                "name": "Work",
+                "number": phone
+            }
+        ]
+
     # Add state if available
     if state:
-        contact_data["data"]["attributes"]["address"] = {
-            "state": state,
-            "country": "US"
-        }
+        contact_data["data"]["attributes"]["addresses"] = [
+            {
+                "name": "Home",
+                "state": state,
+                "country": "US"
+            }
+        ]
 
     # Make API request to Clio
     headers = {
-        "Authorization": f"Bearer {session['clio_token']}",
-        "Content-Type": "application/json"
+        "Authorization": f"Bearer {clio_token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json"  # Explicitly specify Accept header
     }
-    
-    # Send to contacts endpoint
-    print(f"📤 Final contact creation attempt: {json.dumps(contact_data, indent=2)}")
+
+    # Debug output
+    print(f"📤 Sending contact data to Clio: {json.dumps(contact_data, indent=2)}")
+
     response = requests.post(
         f"{CLIO_API_BASE}/contacts",
         headers=headers,
         json=contact_data
     )
-    
-    print(f"📥 Response status: {response.status_code}")
-    print(f"📥 Response body: {response.text[:200]}...")
-    
-    if response.status_code not in [200, 201]:
-        print("❌ Contact creation attempt failed")
-        return {
-            "error": "Failed to create contact", 
-            "details": response.text
-        }
-    
-    return response.json()
 
+    # Log the response
+    print(f"📥 Clio API response status: {response.status_code}")
+    print(f"📥 Clio API response body: {response.text[:300]}...")
+
+    if response.status_code not in [200, 201]:
+        error_msg = f"❌ Error creating Clio contact: {response.text}"
+        print(error_msg)
+
+        # Try to parse the error for more details
+        try:
+            error_json = response.json()
+            if "errors" in error_json:
+                for error in error_json["errors"]:
+                    print(f"🔍 Error detail: {error.get('detail', 'No detail')}")
+                    print(f"🔍 Error source: {error.get('source', 'No source')}")
+        except:
+            pass
+
+        return {"error": "Failed to create contact", "details": response.text}
+
+    return response.json()
 def create_clio_matter(contact_data, practice_area, description):
     """Create a matter in Clio"""
     # Flag to use mock data for development/testing
-    USE_MOCK_DATA = False  # Set to False in production
+    USE_MOCK_DATA = True  # Set to False in production
     
     # Check if we have a valid contact - for mock data we'll still proceed
     if "error" in contact_data and not USE_MOCK_DATA:
