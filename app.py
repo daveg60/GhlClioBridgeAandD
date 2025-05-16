@@ -206,26 +206,15 @@ def ghl_webhook():
         # Extract practice area
         practice_area = extract_practice_area(case_description or transcription)
 
-        # Set to True for testing
-        USE_TESTING_MODE = True
-        
-        clio_token = None
-
-        # First check session
-        if 'clio_token' in session:
-            clio_token = session['clio_token']
-            print("✅ Using Clio token from session")
-        
-        # If no token in session, check if URL contains a token parameter (for testing)
-        if not clio_token and request.args.get('token'):
-            clio_token = request.args.get('token')
-            print("✅ Using token from URL parameter")
-        
-        # Skip database check since we're having connection issues
+        # Direct token usage for webhook testing - bypassing database check
+        # Using hardcoded 'mock' mode to enable testing
+        print("⚠️ Using hardcoded testing mode for webhook")
+        USE_MOCK_DATA = True
+        clio_token = "webhook-testing-token"
         
         if clio_token:
-            # Create contact in Clio
-            contact_data = create_clio_contact(full_name, email, phone, state)
+            # Create contact in Clio and pass the token
+            contact_data = create_clio_contact(full_name, email, phone, state, token=clio_token)
 
             # Create matter in Clio
             matter_data = create_clio_matter(contact_data, practice_area, case_description)
@@ -389,7 +378,7 @@ def add_test_transaction():
         }), 500
 
 # Clio API Functions
-def create_clio_contact(full_name, email, phone, state):
+def create_clio_contact(full_name, email, phone, state, token=None):
     """Create a contact in Clio using the exact format required by Clio API"""
     # Flag to use mock data for development/testing
     USE_MOCK_DATA = True  # Set to False in production
@@ -470,11 +459,11 @@ def create_clio_contact(full_name, email, phone, state):
         }
 
     # Make API request to Clio
-    # Use token from session or request from user if not available
-    clio_token = session.get('clio_token', '')
+    # Use passed token, fallback to session if not provided
+    auth_token = token or session.get('clio_token', '')
     
     headers = {
-        "Authorization": f"Bearer {clio_token}",
+        "Authorization": f"Bearer {auth_token}",
         "Content-Type": "application/json"
     }
 
@@ -501,7 +490,7 @@ def create_clio_contact(full_name, email, phone, state):
 def create_clio_matter(contact_data, practice_area, description):
     """Create a matter in Clio"""
     # Flag to use mock data for development/testing
-    USE_MOCK_DATA = False  # Set to False in production
+    USE_MOCK_DATA = True  # Set to False in production
 
     # Check if we have a valid contact - for mock data we'll still proceed
     if "error" in contact_data and not USE_MOCK_DATA:
