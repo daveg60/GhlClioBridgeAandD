@@ -206,8 +206,8 @@ def ghl_webhook():
         # Extract practice area
         practice_area = extract_practice_area(case_description or transcription)
 
-        # Set to False to test with actual Clio API
-        USE_TESTING_MODE = False
+        # Set to True for testing
+        USE_TESTING_MODE = True
         
         clio_token = None
 
@@ -392,7 +392,7 @@ def add_test_transaction():
 def create_clio_contact(full_name, email, phone, state):
     """Create a contact in Clio using the exact format required by Clio API"""
     # Flag to use mock data for development/testing
-    USE_MOCK_DATA = False  # Set to False in production
+    USE_MOCK_DATA = True  # Set to False in production
 
     # Parse name 
     name_parts = full_name.split(' ')
