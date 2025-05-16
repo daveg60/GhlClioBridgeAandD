@@ -209,33 +209,19 @@ def ghl_webhook():
         # Set to False to test with actual Clio API
         USE_TESTING_MODE = False
         
-        if USE_TESTING_MODE:
-            print("⚠️ Using testing mode for webhook processing")
-            clio_token = "test-token"  # This allows us to bypass authentication check
-        else:
-            # Check if we're authenticated with Clio (either via session or database)
-            clio_token = None
+        clio_token = None
 
-            # First check session
-            if 'clio_token' in session:
-                clio_token = session['clio_token']
-            else:
-                # Then check database
-                try:
-                    import psycopg2
-                    db_url = os.environ.get("DATABASE_URL")
-                    conn = psycopg2.connect(db_url)
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT oauth_token FROM api_configs WHERE service = 'clio' AND oauth_token IS NOT NULL")
-                    result = cursor.fetchone()
-                    if result and result[0]:
-                        clio_token = result[0]
-                        # Also store in session for future requests
-                        session['clio_token'] = clio_token
-                    cursor.close()
-                    conn.close()
-                except Exception as e:
-                    print(f"Error checking database for Clio token: {str(e)}")
+        # First check session
+        if 'clio_token' in session:
+            clio_token = session['clio_token']
+            print("✅ Using Clio token from session")
+        
+        # If no token in session, check if URL contains a token parameter (for testing)
+        if not clio_token and request.args.get('token'):
+            clio_token = request.args.get('token')
+            print("✅ Using token from URL parameter")
+        
+        # Skip database check since we're having connection issues
         
         if clio_token:
             # Create contact in Clio
