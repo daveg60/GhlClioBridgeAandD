@@ -69,7 +69,7 @@ def extract_practice_area(description):
 def index():
     """Homepage with status and login link"""
     clio_token = None
-    
+
     # First check session
     if 'clio_token' in session:
         clio_token = session['clio_token']
@@ -90,7 +90,7 @@ def index():
             conn.close()
         except Exception as e:
             print(f"Error checking database for Clio token: {str(e)}")
-    
+
     if clio_token:
         return jsonify({
             "status": "connected",
@@ -133,25 +133,25 @@ def clio_callback():
     token_info = response.json()
     access_token = token_info.get('access_token')
     refresh_token = token_info.get('refresh_token')
-    
+
     # Store tokens in session
     session['clio_token'] = access_token
     session['clio_refresh_token'] = refresh_token
-    
+
     # Store tokens in database using raw SQL to avoid circular imports
     import sqlite3
     import psycopg2
     import os
-    
+
     # Use PostgreSQL connection from environment variable
     db_url = os.environ.get("DATABASE_URL")
     conn = psycopg2.connect(db_url)
     cursor = conn.cursor()
-    
+
     # Check if Clio config exists
     cursor.execute("SELECT id FROM api_configs WHERE service = 'clio'")
     clio_config = cursor.fetchone()
-    
+
     if clio_config:
         # Update existing config
         cursor.execute(
@@ -166,7 +166,7 @@ def clio_callback():
                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())""",
             ('clio', CLIO_CLIENT_ID, CLIO_CLIENT_SECRET, CLIO_API_BASE, access_token, refresh_token, True)
         )
-    
+
     # Save changes to database
     conn.commit()
     cursor.close()
@@ -208,7 +208,7 @@ def ghl_webhook():
 
         # Check if we're authenticated with Clio (either via session or database)
         clio_token = None
-        
+
         # First check session
         if 'clio_token' in session:
             clio_token = session['clio_token']
@@ -229,7 +229,7 @@ def ghl_webhook():
                 conn.close()
             except Exception as e:
                 print(f"Error checking database for Clio token: {str(e)}")
-        
+
         if clio_token:
             # Create contact in Clio
             contact_data = create_clio_contact(full_name, email, phone, state)
@@ -274,11 +274,11 @@ def view_logs():
         db_url = os.environ.get("DATABASE_URL")
         conn = psycopg2.connect(db_url)
         cursor = conn.cursor()
-        
+
         # Get transaction count
         cursor.execute("SELECT COUNT(*) FROM transactions")
         total_count = cursor.fetchone()[0]
-        
+
         # Get recent transactions
         cursor.execute(
             """SELECT id, source, destination, request_method, request_url, 
@@ -287,7 +287,7 @@ def view_logs():
               ORDER BY created_at DESC
               LIMIT 10"""
         )
-        
+
         transactions = []
         for t in cursor.fetchall():
             t_id, source, dest, method, url, status, success, created = t
@@ -301,11 +301,11 @@ def view_logs():
                 "success": success,
                 "created_at": created.isoformat() if created else None
             })
-        
+
         # Get error count
         cursor.execute("SELECT COUNT(*) FROM error_logs")
         error_count = cursor.fetchone()[0]
-        
+
         # Get recent errors
         cursor.execute(
             """SELECT id, transaction_id, error_type, error_message, created_at 
@@ -313,7 +313,7 @@ def view_logs():
               ORDER BY created_at DESC
               LIMIT 5"""
         )
-        
+
         errors = []
         for e in cursor.fetchall():
             e_id, t_id, e_type, message, created = e
@@ -324,10 +324,10 @@ def view_logs():
                 "message": message,
                 "created_at": created.isoformat() if created else None
             })
-        
+
         cursor.close()
         conn.close()
-        
+
         return jsonify({
             "status": "success",
             "total_transactions": total_count,
@@ -335,7 +335,7 @@ def view_logs():
             "recent_transactions": transactions,
             "recent_errors": errors
         })
-        
+
     except Exception as e:
         print(f"Error getting logs: {str(e)}")
         return jsonify({
@@ -351,17 +351,17 @@ def add_test_transaction():
         import psycopg2
         import json
         from datetime import datetime
-        
+
         # Connect to the database
         db_url = os.environ.get("DATABASE_URL")
         conn = psycopg2.connect(db_url)
         cursor = conn.cursor()
-        
+
         # Get data from request or use defaults
         data = request.json or {}
         source = data.get('source', 'ghl')
         destination = data.get('destination', 'clio')
-        
+
         # Insert a test transaction
         cursor.execute(
             """INSERT INTO transactions
@@ -375,19 +375,19 @@ def add_test_transaction():
              200, json.dumps({"id": "test-123", "status": "created"}),
              150, True, datetime.now())
         )
-        
+
         transaction_id = cursor.fetchone()[0]
-        
+
         # Commit the transaction
         conn.commit()
         cursor.close()
         conn.close()
-        
+
         return jsonify({
             "status": "success",
             "message": f"Added test transaction with ID: {transaction_id}"
         })
-        
+
     except Exception as e:
         print(f"Error adding test transaction: {str(e)}")
         return jsonify({
@@ -399,7 +399,7 @@ def add_test_transaction():
 def create_clio_contact(full_name, email, phone, state):
     """Create a contact in Clio using the exact format required by Clio API"""
     # Flag to use mock data for development/testing
-    USE_MOCK_DATA = True  # Set to False in production
+    USE_MOCK_DATA = False  # Set to False in production
 
     # Parse name 
     name_parts = full_name.split(' ')
@@ -441,98 +441,57 @@ def create_clio_contact(full_name, email, phone, state):
         }
         return mock_contact
 
-    # Get token from session
-    clio_token = session.get('clio_token')
-    if not clio_token:
-        return {"error": "No Clio token available"}
-
-    # Structure based on JSON:API specification
-    # Strictly following Clio API documentation
+    # Using the JSON:API structure with Person as the type
+    # Based on the "Missing required parameter: data" error
     contact_data = {
         "data": {
-            "type": "contacts",
+            "type": "Person",
             "attributes": {
-                "name": full_name,
-                "first_name": first_name,
-                "last_name": last_name,
-                "title": "",
-                "prefix": "",
-                "type": "Person",
-                "is_client": True
+                "name": full_name, 
+                "email": email,
+                "phone": phone
             }
         }
     }
 
-    # Add email if provided
-    if email:
-        contact_data["data"]["attributes"]["email_addresses"] = [
-            {
-                "name": "Work",
-                "address": email
-            }
-        ]
-
-    # Add phone if provided
-    if phone:
-        contact_data["data"]["attributes"]["phone_numbers"] = [
-            {
-                "name": "Work",
-                "number": phone
-            }
-        ]
-
     # Add state if available
     if state:
-        contact_data["data"]["attributes"]["addresses"] = [
-            {
-                "name": "Home",
-                "state": state,
-                "country": "US"
-            }
-        ]
+        contact_data["data"]["attributes"]["address"] = {
+            "state": state,
+            "country": "US"
+        }
 
     # Make API request to Clio
     headers = {
-        "Authorization": f"Bearer {clio_token}",
-        "Content-Type": "application/json",
-        "Accept": "application/json"  # Explicitly specify Accept header
+        "Authorization": f"Bearer {session['clio_token']}",
+        "Content-Type": "application/json"
     }
 
-    # Debug output
-    print(f"📤 Sending contact data to Clio: {json.dumps(contact_data, indent=2)}")
-
+    # Send to contacts endpoint
+    print(f"📤 Final contact creation attempt: {json.dumps(contact_data, indent=2)}")
     response = requests.post(
         f"{CLIO_API_BASE}/contacts",
         headers=headers,
         json=contact_data
     )
 
-    # Log the response
-    print(f"📥 Clio API response status: {response.status_code}")
-    print(f"📥 Clio API response body: {response.text[:300]}...")
+    print(f"📥 Response status: {response.status_code}")
+    print(f"📥 Response body: {response.text[:200]}...")
 
     if response.status_code not in [200, 201]:
-        error_msg = f"❌ Error creating Clio contact: {response.text}"
-        print(error_msg)
-
-        # Try to parse the error for more details
-        try:
-            error_json = response.json()
-            if "errors" in error_json:
-                for error in error_json["errors"]:
-                    print(f"🔍 Error detail: {error.get('detail', 'No detail')}")
-                    print(f"🔍 Error source: {error.get('source', 'No source')}")
-        except:
-            pass
-
-        return {"error": "Failed to create contact", "details": response.text}
+        print("❌ Contact creation attempt failed")
+        return {
+            "error": "Failed to create contact", 
+            "details": response.text
+        }
 
     return response.json()
+
 def create_clio_matter(contact_data, practice_area, description):
     """Create a matter in Clio"""
     # Flag to use mock data for development/testing
-    USE_MOCK_DATA = True  # Set to False in production
-    
+    USE_MOCK_DATA = False  # Set to False in production
+
     # Check if we have a valid contact - for mock data we'll still proceed
     if "error" in contact_data and not USE_MOCK_DATA:
         print(f"❌ Cannot create matter without valid contact: {contact_data['error']}")
@@ -540,7 +499,7 @@ def create_clio_matter(contact_data, practice_area, description):
 
     # Extract contact ID or use the mock ID if available
     contact_id = contact_data.get("data", {}).get("id", "mock-contact-123")
-    
+
     # If using mock data, short-circuit
     if USE_MOCK_DATA:
         print("⚠️ Using mock matter data (DEVELOPMENT MODE)")
