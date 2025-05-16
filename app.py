@@ -91,13 +91,16 @@ def index():
         except Exception as e:
             print(f"Error checking database for Clio token: {str(e)}")
 
+    # Generate auth URL for easy re-authentication
+    auth_url = f"{CLIO_AUTH_URL}?response_type=code&client_id={CLIO_CLIENT_ID}&redirect_uri={CLIO_REDIRECT_URI}"
+    
     if clio_token:
         return jsonify({
             "status": "connected",
-            "message": "GHL to Clio bridge is active and authenticated with Clio"
+            "message": "GHL to Clio bridge is active and authenticated with Clio",
+            "reauth_url": auth_url  # Include re-auth URL even when connected
         })
     else:
-        auth_url = f"{CLIO_AUTH_URL}?response_type=code&client_id={CLIO_CLIENT_ID}&redirect_uri={CLIO_REDIRECT_URI}"
         return jsonify({
             "status": "not_connected",
             "message": "Not authenticated with Clio",
@@ -448,33 +451,40 @@ def create_clio_contact(full_name, email, phone, state, token=None):
         }
         return mock_contact
 
-    # Using the JSON:API structure required by Clio
-    # The type must be in the attributes section, not at the data level
+    # Using the correct JSON structure required by Clio API
+    # Based on their error message and documentation
     contact_data = {
         "data": {
             "type": "contacts",
             "attributes": {
-                "name": full_name,
-                "type": "Person",  # This must be either "Person" or "Company"
-                "first_name": first_name,
-                "last_name": last_name,
-                "email_addresses": [
-                    {
-                        "name": "Work",
-                        "address": email,
-                        "default": True
-                    }
-                ],
-                "phone_numbers": [
-                    {
-                        "name": "Work",
-                        "number": phone,
-                        "default": True
-                    }
-                ]
+                "name": full_name or "New Lead",  # Use default if name is empty
+                "type": "Person",  # Must be exactly "Person" or "Company"
+                "first_name": first_name or "New",  # Default values if empty
+                "last_name": last_name or "Lead",   # Default values if empty
+                "email_addresses": []
             }
         }
     }
+    
+    # Only add email if provided
+    if email:
+        contact_data["data"]["attributes"]["email_addresses"] = [
+            {
+                "name": "Work",
+                "address": email,
+                "default": True
+            }
+        ]
+    
+    # Add phone if provided
+    if phone:
+        contact_data["data"]["attributes"]["phone_numbers"] = [
+            {
+                "name": "Work",
+                "number": phone,
+                "default": True
+            }
+        ]
 
     # Add state if available
     if state:
