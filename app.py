@@ -433,23 +433,29 @@ def create_clio_contact(full_name, email, phone, state, token=None):
     if not auth_token:
         return {"error": "No Clio token available"}
 
-    # Based directly on the error message:
-    # "type must be one of the following: 'Company' or 'Person'"
-    # Let's try exactly what it says - put 'Person' with single quotes
-    contact_data = {
+    # Try multiple approaches one by one until one works
+
+    # Headers for all requests
+    headers = {
+        "Authorization": f"Bearer {auth_token}",
+        "Content-Type": "application/json"
+    }
+
+    # Try approach 1: Direct to /people endpoint
+    person_data = {
         "data": {
-            "type": "contacts",
+            "type": "people",
             "attributes": {
                 "first_name": first_name,
                 "last_name": last_name,
-                "type": "Person"  # Exactly as specified in the error
+                "is_client": True
             }
         }
     }
 
-    # Only add email if provided
+    # Add email if provided
     if email:
-        contact_data["data"]["attributes"]["email_addresses"] = [
+        person_data["data"]["attributes"]["email_addresses"] = [
             {
                 "name": "Work",
                 "address": email
@@ -458,7 +464,7 @@ def create_clio_contact(full_name, email, phone, state, token=None):
 
     # Add phone if provided
     if phone:
-        contact_data["data"]["attributes"]["phone_numbers"] = [
+        person_data["data"]["attributes"]["phone_numbers"] = [
             {
                 "name": "Work",
                 "number": phone
@@ -467,7 +473,7 @@ def create_clio_contact(full_name, email, phone, state, token=None):
 
     # Add state if available
     if state:
-        contact_data["data"]["attributes"]["addresses"] = [
+        person_data["data"]["attributes"]["addresses"] = [
             {
                 "name": "Home",
                 "state": state,
@@ -475,31 +481,149 @@ def create_clio_contact(full_name, email, phone, state, token=None):
             }
         ]
 
-    # Make API request to Clio
-    headers = {
-        "Authorization": f"Bearer {auth_token}",
-        "Content-Type": "application/json"
-    }
+    print(f"📤 Approach 1: Using /people endpoint")
+    print(json.dumps(person_data, indent=2))
 
-    # Send request to contacts endpoint
-    print(f"📤 Simplified contact creation attempt: {json.dumps(contact_data, indent=2)}")
-    response = requests.post(
-        f"{CLIO_API_BASE}/contacts",
+    people_response = requests.post(
+        f"{CLIO_API_BASE}/people",
         headers=headers,
-        json=contact_data
+        json=person_data
     )
 
-    print(f"📥 Response status: {response.status_code}")
-    print(f"📥 Response body: {response.text[:200]}...")
+    print(f"📥 People endpoint response: {people_response.status_code}")
 
-    if response.status_code not in [200, 201]:
-        print("❌ Contact creation failed")
-        return {
-            "error": "Failed to create contact", 
-            "details": response.text
+    if people_response.status_code in [200, 201]:
+        print("✅ Success with people endpoint!")
+        return people_response.json()
+
+    # Try approach 2: Using contact_type_id
+    contact_type_data = {
+        "data": {
+            "type": "contacts",
+            "attributes": {
+                "first_name": first_name,
+                "last_name": last_name,
+                "contact_type_id": 1,  # 1 = Person, 2 = Company in many systems
+                "is_client": True
+            }
         }
+    }
 
-    return response.json()
+    # Add email/phone/state same as before
+    if email:
+        contact_type_data["data"]["attributes"]["email_addresses"] = person_data["data"]["attributes"].get("email_addresses", [])
+    if phone:
+        contact_type_data["data"]["attributes"]["phone_numbers"] = person_data["data"]["attributes"].get("phone_numbers", [])
+    if state:
+        contact_type_data["data"]["attributes"]["addresses"] = person_data["data"]["attributes"].get("addresses", [])
+
+    print(f"📤 Approach 2: Using contact_type_id")
+    print(json.dumps(contact_type_data, indent=2))
+
+    type_id_response = requests.post(
+        f"{CLIO_API_BASE}/contacts",
+        headers=headers,
+        json=contact_type_data
+    )
+
+    print(f"📥 Contact type id response: {type_id_response.status_code}")
+
+    if type_id_response.status_code in [200, 201]:
+        print("✅ Success with contact_type_id approach!")
+        return type_id_response.json()
+
+    # Try approach 3: Using entity_type
+    entity_type_data = {
+        "data": {
+            "type": "contacts",
+            "attributes": {
+                "first_name": first_name,
+                "last_name": last_name,
+                "entity_type": "Person",
+                "is_client": True
+            }
+        }
+    }
+
+    # Add email/phone/state same as before
+    if email:
+        entity_type_data["data"]["attributes"]["email_addresses"] = person_data["data"]["attributes"].get("email_addresses", [])
+    if phone:
+        entity_type_data["data"]["attributes"]["phone_numbers"] = person_data["data"]["attributes"].get("phone_numbers", [])
+    if state:
+        entity_type_data["data"]["attributes"]["addresses"] = person_data["data"]["attributes"].get("addresses", [])
+
+    print(f"📤 Approach 3: Using entity_type")
+    print(json.dumps(entity_type_data, indent=2))
+
+    entity_response = requests.post(
+        f"{CLIO_API_BASE}/contacts",
+        headers=headers,
+        json=entity_type_data
+    )
+
+    print(f"📥 Entity type response: {entity_response.status_code}")
+
+    if entity_response.status_code in [200, 201]:
+        print("✅ Success with entity_type approach!")
+        return entity_response.json()
+
+    # Try approach 4: Using meta type
+    meta_type_data = {
+        "data": {
+            "type": "contacts",
+            "meta": {
+                "type": "Person"
+            },
+            "attributes": {
+                "first_name": first_name,
+                "last_name": last_name,
+                "is_client": True
+            }
+        }
+    }
+
+    # Add email/phone/state same as before
+    if email:
+        meta_type_data["data"]["attributes"]["email_addresses"] = person_data["data"]["attributes"].get("email_addresses", [])
+    if phone:
+        meta_type_data["data"]["attributes"]["phone_numbers"] = person_data["data"]["attributes"].get("phone_numbers", [])
+    if state:
+        meta_type_data["data"]["attributes"]["addresses"] = person_data["data"]["attributes"].get("addresses", [])
+
+    print(f"📤 Approach 4: Using meta type")
+    print(json.dumps(meta_type_data, indent=2))
+
+    meta_response = requests.post(
+        f"{CLIO_API_BASE}/contacts",
+        headers=headers,
+        json=meta_type_data
+    )
+
+    print(f"📥 Meta type response: {meta_response.status_code}")
+
+    if meta_response.status_code in [200, 201]:
+        print("✅ Success with meta type approach!")
+        return meta_response.json()
+
+    # All approaches failed, try to analyze responses to figure out why
+    print("❌ All approaches failed to create contact")
+    print(f"People endpoint error: {people_response.text[:200]}...")
+    print(f"Contact type id error: {type_id_response.text[:200]}...")
+    print(f"Entity type error: {entity_response.text[:200]}...")
+    print(f"Meta type error: {meta_response.text[:200]}...")
+
+    # Return the response that gave the most information
+    for resp in [people_response, type_id_response, entity_response, meta_response]:
+        try:
+            error_json = resp.json()
+            if 'errors' in error_json or 'error' in error_json:
+                return {"error": "Failed to create contact", "details": resp.text}
+        except:
+            pass
+
+    # If we couldn't parse any error, just return the last one
+    return {"error": "Failed to create contact", "details": meta_response.text}
 def create_clio_matter(contact_data, practice_area, description):
     """Create a matter in Clio"""
     # Using real API for production
