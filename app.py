@@ -79,14 +79,14 @@ def extract_caller_info_from_transcript(transcription):
 
     # Look for name patterns like "My name is John Smith" or "This is Sarah Johnson"
     name_patterns = [
-        r"my name is ([A-Za-z\s]+?)[\.\,\n]",  # Matches "My name is Jennifer Parker."
-        r"this is ([A-Za-z\s]+?)[\.\,\n]",     # Matches "This is John Smith."
-        r"i'm ([A-Za-z\s]+?)[\.\,\n]",         # Matches "I'm Sarah Johnson."
-        r"i am ([A-Za-z\s]+?)[\.\,\n]",        # Matches "I am Mike Davis."
-        r"my name is ([A-Za-z\s]+)",           # Fallback without punctuation
-        r"this is ([A-Za-z\s]+)",              # Fallback without punctuation
-        r"i'm ([A-Za-z\s]+)",                  # Fallback without punctuation
-        r"i am ([A-Za-z\s]+)"                  # Fallback without punctuation
+        r"[Mm]y name is ([A-Za-z\s]+?)[\.\,\n]",  # Matches "My name is Jennifer Parker."
+        r"[Tt]his is ([A-Za-z\s]+?)[\.\,\n]",     # Matches "This is John Smith."
+        r"[Ii]'m ([A-Za-z\s]+?)[\.\,\n]",         # Matches "I'm Sarah Johnson."
+        r"[Ii] am ([A-Za-z\s]+?)[\.\,\n]",        # Matches "I am Mike Davis."
+        r"[Mm]y name is ([A-Za-z\s]+)",           # Fallback without punctuation
+        r"[Tt]his is ([A-Za-z\s]+)",              # Fallback without punctuation
+        r"[Ii]'m ([A-Za-z\s]+)",                  # Fallback without punctuation
+        r"[Ii] am ([A-Za-z\s]+)"                  # Fallback without punctuation
     ]
 
     # Look for phone patterns
@@ -232,11 +232,8 @@ def ghl_webhook():
         data = request.json
         print("✅ Incoming webhook data from GHL:", data)
 
-        # Extract caller info from transcript - check both main data and customData
+        # Extract caller info from transcript
         transcription = data.get("transcription", "")
-        # Also check if transcription is in customData
-        if not transcription and "customData" in data and isinstance(data["customData"], dict):
-            transcription = data["customData"].get("transcription", "")
         caller_info = extract_caller_info_from_transcript(transcription)
 
         # Use extracted info or fall back to webhook data (with proper title case)
@@ -257,8 +254,13 @@ def ghl_webhook():
                 phone = custom_data.get("phone", "")
             case_description = custom_data.get("case_description", "")
 
-        # Extract practice area
-        practice_area = extract_practice_area(case_description or transcription)
+        # Use transcription as case description if no explicit case description provided
+        if not case_description and transcription:
+            case_description = transcription
+            print("📝 Using transcription as case description")
+
+        # Extract practice area from case description or transcription
+        practice_area = extract_practice_area(case_description)
 
         # Get the real Clio token from session or database
         clio_token = None
