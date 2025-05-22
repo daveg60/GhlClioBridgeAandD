@@ -587,24 +587,15 @@ def create_clio_matter(contact_data, practice_area, description, token=None):
     if not auth_token:
         return {"error": "No Clio authentication token available"}
 
-    # Prepare matter data
+    # Prepare matter data - trying simpler format based on error message
     matter_data = {
         "data": {
             "type": "matters",
-            "attributes": {
-                "display_number": f"GHL-{contact_id}",
-                "description": description or "Lead from GoHighLevel",
-                "status": "Open",
-                "practice_area": practice_area
-            },
-            "relationships": {
-                "client": {
-                    "data": {
-                        "type": "contacts",
-                        "id": contact_id
-                    }
-                }
-            }
+            "client_id": contact_id,
+            "display_number": f"GHL-{contact_id}",
+            "description": description or "Lead from GoHighLevel",
+            "status": "Open",
+            "practice_area": practice_area
         }
     }
 
