@@ -625,11 +625,18 @@ def create_clio_matter(contact_data, practice_area, description, token=None):
 
     # APPROACH 2: Try numeric client_id in attributes
     print("🔍 ATTEMPT 2: numeric client_id in attributes")
+
+    # Safe conversion to int - handle both string and int contact_id
+    try:
+        numeric_client_id = int(contact_id)
+    except (ValueError, TypeError):
+        numeric_client_id = contact_id
+
     matter_data_2 = {
         "data": {
             "type": "matters",
             "attributes": {
-                "client_id": int(contact_id) if contact_id.isdigit() else contact_id,
+                "client_id": numeric_client_id,
                 "display_number": f"GHL-{contact_id}",
                 "description": description or "Lead from GoHighLevel",
                 "status": "Open",
