@@ -533,7 +533,7 @@ def create_clio_contact(full_name, email, phone, state=None, token=None):
         return {"error": f"Exception when creating contact: {str(e)}"}
 
 def create_clio_matter(contact_data, practice_area, description, token=None):
-    """Create a matter in Clio"""
+    """Create a matter in Clio - trying multiple formats to find what works"""
     import requests
     import json
     from flask import session
@@ -552,7 +552,6 @@ def create_clio_matter(contact_data, practice_area, description, token=None):
     # If using mock data, short-circuit
     if USE_MOCK_DATA:
         print("⚠️ Using mock matter data (DEVELOPMENT MODE)")
-        # For testing purposes, create a mock matter response
         mock_matter = {
             "data": {
                 "id": "mock-matter-456",
@@ -587,53 +586,173 @@ def create_clio_matter(contact_data, practice_area, description, token=None):
     if not auth_token:
         return {"error": "No Clio authentication token available"}
 
-    # Prepare matter data - using relationships structure for client reference
-    matter_data = {
-        "data": {
-            "type": "matters",
-            "attributes": {
-                "display_number": f"GHL-{contact_id}",
-                "description": description or "Lead from GoHighLevel",
-                "status": "Open",
-                "practice_area": practice_area
-            },
-            "relationships": {
-                "client": {
-                    "data": {
-                        "type": "contacts",
-                        "id": str(contact_id)
-                    }
-                }
-            }
-        }
-    }
-
-    # Make API request to Clio
+    # Set up headers
     headers = {
         "Authorization": f"Bearer {auth_token}",
         "Content-Type": "application/json",
         "Accept": "application/json"
     }
 
-    print(f"📤 Sending matter creation request: {json.dumps(matter_data, indent=2)}")
-    response = requests.post(
-        f"{CLIO_API_BASE}/matters",
-        headers=headers,
-        json=matter_data,
-        timeout=20
-    )
-
-    print(f"📥 Matter creation response status: {response.status_code}")
-    print(f"📥 Matter creation response: {response.text[:200]}...")
-
-    if response.status_code not in [200, 201]:
-        print(f"❌ Failed to create matter in Clio")
-        return {
-            "error": "Failed to create matter", 
-            "details": response.text
+    # APPROACH 1: Try client_id at root level of data
+    print("🔍 ATTEMPT 1: client_id at root level")
+    matter_data_1 = {
+        "data": {
+            "type": "matters",
+            "client_id": str(contact_id),
+            "display_number": f"GHL-{contact_id}",
+            "description": description or "Lead from GoHighLevel",
+            "status": "Open",
+            "practice_area": practice_area
         }
+    }
 
-    return response.json()
+    try:
+        print(f"📤 Request 1: {json.dumps(matter_data_1, indent=2)}")
+        response1 = requests.post(
+            f"{CLIO_API_BASE}/matters",
+            headers=headers,
+            json=matter_data_1,
+            timeout=20
+        )
+        print(f"📥 Response 1 status: {response1.status_code}")
+        print(f"📥 Response 1 body: {response1.text[:300]}...")
+
+        if response1.status_code in [200, 201]:
+            print("✅ Success with client_id at root level!")
+            return response1.json()
+    except Exception as e:
+        print(f"❌ Error with approach 1: {str(e)}")
+
+    # APPROACH 2: Try numeric client_id in attributes
+    print("🔍 ATTEMPT 2: numeric client_id in attributes")
+    matter_data_2 = {
+        "data": {
+            "type": "matters",
+            "attributes": {
+                "client_id": int(contact_id) if contact_id.isdigit() else contact_id,
+                "display_number": f"GHL-{contact_id}",
+                "description": description or "Lead from GoHighLevel",
+                "status": "Open",
+                "practice_area": practice_area
+            }
+        }
+    }
+
+    try:
+        print(f"📤 Request 2: {json.dumps(matter_data_2, indent=2)}")
+        response2 = requests.post(
+            f"{CLIO_API_BASE}/matters",
+            headers=headers,
+            json=matter_data_2,
+            timeout=20
+        )
+        print(f"📥 Response 2 status: {response2.status_code}")
+        print(f"📥 Response 2 body: {response2.text[:300]}...")
+
+        if response2.status_code in [200, 201]:
+            print("✅ Success with numeric client_id in attributes!")
+            return response2.json()
+    except Exception as e:
+        print(f"❌ Error with approach 2: {str(e)}")
+
+    # APPROACH 3: Try without wrapper object (direct to API)
+    print("🔍 ATTEMPT 3: Direct format without data wrapper")
+    matter_data_3 = {
+        "client_id": str(contact_id),
+        "display_number": f"GHL-{contact_id}",
+        "description": description or "Lead from GoHighLevel",
+        "status": "Open",
+        "practice_area": practice_area
+    }
+
+    try:
+        print(f"📤 Request 3: {json.dumps(matter_data_3, indent=2)}")
+        response3 = requests.post(
+            f"{CLIO_API_BASE}/matters",
+            headers=headers,
+            json=matter_data_3,
+            timeout=20
+        )
+        print(f"📥 Response 3 status: {response3.status_code}")
+        print(f"📥 Response 3 body: {response3.text[:300]}...")
+
+        if response3.status_code in [200, 201]:
+            print("✅ Success with direct format!")
+            return response3.json()
+    except Exception as e:
+        print(f"❌ Error with approach 3: {str(e)}")
+
+    # APPROACH 4: Try with matter wrapper (like old contact format)
+    print("🔍 ATTEMPT 4: Using matter wrapper")
+    matter_data_4 = {
+        "matter": {
+            "client_id": str(contact_id),
+            "display_number": f"GHL-{contact_id}",
+            "description": description or "Lead from GoHighLevel",
+            "status": "Open",
+            "practice_area": practice_area
+        }
+    }
+
+    try:
+        print(f"📤 Request 4: {json.dumps(matter_data_4, indent=2)}")
+        response4 = requests.post(
+            f"{CLIO_API_BASE}/matters",
+            headers=headers,
+            json=matter_data_4,
+            timeout=20
+        )
+        print(f"📥 Response 4 status: {response4.status_code}")
+        print(f"📥 Response 4 body: {response4.text[:300]}...")
+
+        if response4.status_code in [200, 201]:
+            print("✅ Success with matter wrapper!")
+            return response4.json()
+    except Exception as e:
+        print(f"❌ Error with approach 4: {str(e)}")
+
+    # APPROACH 5: Try using contact reference format
+    print("🔍 ATTEMPT 5: Using contact reference")
+    matter_data_5 = {
+        "data": {
+            "type": "matters",
+            "attributes": {
+                "display_number": f"GHL-{contact_id}",
+                "description": description or "Lead from GoHighLevel",
+                "status": "Open",
+                "practice_area": practice_area,
+                "contact": {
+                    "id": str(contact_id)
+                }
+            }
+        }
+    }
+
+    try:
+        print(f"📤 Request 5: {json.dumps(matter_data_5, indent=2)}")
+        response5 = requests.post(
+            f"{CLIO_API_BASE}/matters",
+            headers=headers,
+            json=matter_data_5,
+            timeout=20
+        )
+        print(f"📥 Response 5 status: {response5.status_code}")
+        print(f"📥 Response 5 body: {response5.text[:300]}...")
+
+        if response5.status_code in [200, 201]:
+            print("✅ Success with contact reference!")
+            return response5.json()
+    except Exception as e:
+        print(f"❌ Error with approach 5: {str(e)}")
+
+    # If all approaches failed, return detailed error info
+    print("⚠️ All matter creation approaches failed. Last response details:")
+    return {
+        "error": "Failed to create matter in Clio API after trying 5 different formats",
+        "last_response_status": response5.status_code if 'response5' in locals() else "No response",
+        "last_response_body": response5.text if 'response5' in locals() else "No response body",
+        "contact_id_used": contact_id
+    }
 # Main entry point
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
