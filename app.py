@@ -587,16 +587,23 @@ def create_clio_matter(contact_data, practice_area, description, token=None):
     if not auth_token:
         return {"error": "No Clio authentication token available"}
 
-    # Prepare matter data - put client_id in attributes section like contact creation
+    # Prepare matter data - using relationships structure for client reference
     matter_data = {
         "data": {
             "type": "matters",
             "attributes": {
-                "client_id": contact_id,
                 "display_number": f"GHL-{contact_id}",
                 "description": description or "Lead from GoHighLevel",
                 "status": "Open",
                 "practice_area": practice_area
+            },
+            "relationships": {
+                "client": {
+                    "data": {
+                        "type": "contacts",
+                        "id": str(contact_id)
+                    }
+                }
             }
         }
     }
