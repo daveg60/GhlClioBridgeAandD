@@ -273,6 +273,21 @@ def ghl_webhook():
 
         # Extract caller info from transcript
         transcription = data.get("transcription", "")
+        
+        # Also check if transcription is in customData
+        if not transcription and "customData" in data and isinstance(data["customData"], dict):
+            transcription = data["customData"].get("transcription", "")
+            
+        # Direct extraction of name from transcript
+        if transcription:
+            # Try to extract name directly from obvious patterns
+            import re
+            name_match = re.search(r'human:\s*My name is ([A-Za-z]+)\s+([A-Za-z]+)', transcription)
+            if name_match:
+                first_name = name_match.group(1).strip()
+                last_name = name_match.group(2).strip()
+                print(f"✓ Extracted name directly from transcript: {first_name} {last_name}")
+                
         caller_info = extract_caller_info_from_transcript(transcription)
 
         # Use extracted info or fall back to webhook data (with proper title case)
@@ -636,6 +651,11 @@ def create_clio_contact(full_name, email, phone, state=None, token=None, first_n
 
 def create_clio_matter(contact_data, practice_area, description, token=None):
     """Create a matter in Clio using the correct API format"""
+    # Ensure description doesn't exceed 255 characters (Clio API limit)
+    if description and len(description) > 255:
+        # Create a shorter description
+        short_description = "Lead from GoHighLevel: " + description[:230].replace("bot:", "").replace("human:", "").strip()
+        description = short_description
     import requests
     import json
     from flask import session
