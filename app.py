@@ -73,6 +73,9 @@ def extract_caller_info_from_transcript(transcription):
         "phone": "", 
         "email": ""
     }
+    
+    # For debugging
+    print(f"Extracting info from transcript: {transcription[:100]}...")
 
     if not transcription:
         return caller_info
@@ -504,18 +507,19 @@ def add_test_transaction():
         }), 500
 
 # Clio API Functions
-def create_clio_contact(full_name, email, phone, state=None, token=None):
+def create_clio_contact(full_name, email, phone, state=None, token=None, first_name=None, last_name=None):
     """Create a contact in Clio using the Clio API documentation format"""
     import requests
     import json
     import hashlib
     from datetime import datetime
     from flask import session
-
-    # Parse name 
-    name_parts = full_name.split(' ')
-    first_name = name_parts[0] if name_parts else ""
-    last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ""
+    
+    # Use provided first/last name if available, otherwise parse from full_name
+    if not first_name and not last_name and full_name:
+        name_parts = full_name.split(' ')
+        first_name = name_parts[0] if name_parts else ""
+        last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ""
 
     # Get authentication token
     auth_token = token or session.get('clio_token', '')
