@@ -587,15 +587,17 @@ def create_clio_matter(contact_data, practice_area, description, token=None):
     if not auth_token:
         return {"error": "No Clio authentication token available"}
 
-    # Prepare matter data - trying simpler format based on error message
+    # Prepare matter data - put client_id in attributes section like contact creation
     matter_data = {
         "data": {
             "type": "matters",
-            "client_id": contact_id,
-            "display_number": f"GHL-{contact_id}",
-            "description": description or "Lead from GoHighLevel",
-            "status": "Open",
-            "practice_area": practice_area
+            "attributes": {
+                "client_id": contact_id,
+                "display_number": f"GHL-{contact_id}",
+                "description": description or "Lead from GoHighLevel",
+                "status": "Open",
+                "practice_area": practice_area
+            }
         }
     }
 
@@ -625,7 +627,6 @@ def create_clio_matter(contact_data, practice_area, description, token=None):
         }
 
     return response.json()
-
 # Main entry point
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
