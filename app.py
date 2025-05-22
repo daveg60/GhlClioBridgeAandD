@@ -77,35 +77,71 @@ def extract_caller_info_from_transcript(transcription):
     if not transcription:
         return caller_info
 
-    # Look for name patterns like "My name is John Smith" or "This is Sarah Johnson"
-    name_patterns = [
-        r"[Mm]y name is ([A-Za-z\s]+?)[\.\,\n]",  # Matches "My name is Jennifer Parker."
-        r"[Tt]his is ([A-Za-z\s]+?)[\.\,\n]",     # Matches "This is John Smith."
-        r"[Ii]'m ([A-Za-z\s]+?)[\.\,\n]",         # Matches "I'm Sarah Johnson."
-        r"[Ii] am ([A-Za-z\s]+?)[\.\,\n]",        # Matches "I am Mike Davis."
-        r"[Mm]y name is ([A-Za-z\s]+)",           # Fallback without punctuation
-        r"[Tt]his is ([A-Za-z\s]+)",              # Fallback without punctuation
-        r"[Ii]'m ([A-Za-z\s]+)",                  # Fallback without punctuation
-        r"[Ii] am ([A-Za-z\s]+)"                  # Fallback without punctuation
-    ]
+    # First try to directly detect names from dialog format
+    # Look for dialog with the person's name mentioned by the bot
+    name_from_dialogue = None
+    lines = transcription.split('\n')
+    for i, line in enumerate(lines):
+        if i > 0 and 'bot:' in line.lower() and 'thanks' in line.lower():
+            # Look for patterns like "Thanks Jennifer."
+            thanks_match = re.search(r'[Tt]hanks\s+([A-Za-z]+)[\.!\s]', line)
+            if thanks_match:
+                name_from_dialogue = thanks_match.group(1)
+                break
+    
+    # If we found a first name from dialogue, try to find the full name
+    full_name = ""
+    if name_from_dialogue:
+        # Look for the full name in human lines
+        for line in lines:
+            if 'human:' in line.lower() and 'name is' in line.lower() and name_from_dialogue.lower() in line.lower():
+                name_match = re.search(r'[Mm]y name is ([A-Za-z\s]+)', line)
+                if name_match:
+                    full_name = name_match.group(1).strip()
+                    break
+    
+    # If we found a full name, use it
+    if full_name:
+        caller_info["name"] = full_name
+    elif name_from_dialogue:
+        # Just use the first name if that's all we found
+        caller_info["name"] = name_from_dialogue
+    else:
+        # Fall back to standard patterns
+        name_patterns = [
+            r"[Mm]y name is ([A-Za-z\s]+)[\.|\,]",   # Matches "My name is Jennifer Parker."
+            r"[Mm]y name is ([A-Za-z\s]+)",          # Fallback without punctuation
+            r"[Tt]his is ([A-Za-z\s]+)",             # Fallback "This is John Smith"
+            r"[Ii]'m ([A-Za-z\s]+)",                 # Fallback "I'm John Smith"
+            r"[Cc]all me ([A-Za-z\s]+)"              # Fallback "Call me John"
+        ]
+        
+        for pattern in name_patterns:
+            for line in lines:
+                if 'human:' in line.lower():
+                    match = re.search(pattern, line)
+                    if match:
+                        caller_info["name"] = match.group(1).strip()
+                        break
+            if caller_info["name"]:
+                break
+    
+    # Process the name to get first and last name properly
+    if caller_info["name"]:
+        # Title case and clean up extra spaces
+        caller_info["name"] = " ".join([word.capitalize() for word in caller_info["name"].split()])
+        print(f"✓ Successfully extracted name: {caller_info['name']}")
+    else:
+        print("⚠ Could not extract a name from the transcript")
 
     # Look for phone patterns
     phone_pattern = r"(\d{3}[-.]?\d{3}[-.]?\d{4})"
-
-    # Look for email patterns  
-    email_pattern = r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})"
-
-    # Extract information
-    for pattern in name_patterns:
-        match = re.search(pattern, transcription.lower())
-        if match:
-            caller_info["name"] = match.group(1).title()
-            break
-
     phone_match = re.search(phone_pattern, transcription)
     if phone_match:
         caller_info["phone"] = phone_match.group(1)
 
+    # Look for email patterns  
+    email_pattern = r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})"
     email_match = re.search(email_pattern, transcription.lower())
     if email_match:
         caller_info["email"] = email_match.group(1)
@@ -242,6 +278,17 @@ def ghl_webhook():
         phone = caller_info["phone"] or data.get("phone", "")
         case_description = ""
         state = data.get("state", "")
+        
+        # Process full name into first and last name for Clio API
+        first_name = ""
+        last_name = ""
+        if full_name:
+            name_parts = full_name.split()
+            if len(name_parts) > 0:
+                first_name = name_parts[0]
+                if len(name_parts) > 1:
+                    last_name = " ".join(name_parts[1:])
+            print(f"✓ Processed name: {first_name} {last_name}")
 
         # Try to extract case description from customData
         if "customData" in data and isinstance(data["customData"], dict):
@@ -295,7 +342,7 @@ def ghl_webhook():
 
         if clio_token:
             # Create contact in Clio and pass the token
-            contact_data = create_clio_contact(full_name, email, phone, state, token=clio_token)
+            contact_data = create_clio_contact(full_name, email, phone, state, token=clio_token, first_name=first_name, last_name=last_name)
 
             # Create matter in Clio
             matter_data = create_clio_matter(contact_data, practice_area, case_description, token=clio_token)
