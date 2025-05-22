@@ -435,10 +435,10 @@ def create_clio_contact(full_name, email, phone, state=None, token=None):
         "Accept": "application/json"
     }
 
-    # APPROACH 1: Standard REST format with wrapper
-    # This follows the format shown in Clio's documentation
+    # APPROACH 1: Corrected format based on Clio support feedback
+    # Using "data" wrapper instead of "contact" wrapper
     contact_data = {
-        "contact": {
+        "data": {
             "type": "Person",
             "first_name": first_name,
             "last_name": last_name
@@ -447,7 +447,7 @@ def create_clio_contact(full_name, email, phone, state=None, token=None):
 
     # Add email if provided
     if email:
-        contact_data["contact"]["email_addresses"] = [
+        contact_data["data"]["email_addresses"] = [
             {
                 "address": email,
                 "type": "work"
@@ -456,7 +456,7 @@ def create_clio_contact(full_name, email, phone, state=None, token=None):
 
     # Add phone if provided
     if phone:
-        contact_data["contact"]["phone_numbers"] = [
+        contact_data["data"]["phone_numbers"] = [
             {
                 "number": phone,
                 "type": "work"
@@ -465,7 +465,7 @@ def create_clio_contact(full_name, email, phone, state=None, token=None):
 
     # Add state if provided
     if state:
-        contact_data["contact"]["addresses"] = [
+        contact_data["data"]["addresses"] = [
             {
                 "state": state,
                 "country": "US",
@@ -491,47 +491,7 @@ def create_clio_contact(full_name, email, phone, state=None, token=None):
             print("Successfully created contact in Clio")
             return response.json()
         else:
-            print("Failed to create contact, trying alternative format...")
-
-            # APPROACH 2: JSON:API format
-            # Some Clio API endpoints might use JSON:API specification
-            jsonapi_data = {
-                "data": {
-                    "type": "contacts",
-                    "attributes": {
-                        "type": "Person",
-                        "first_name": first_name,
-                        "last_name": last_name
-                    }
-                }
-            }
-
-            # Add the same email, phone, state fields to the JSON:API format
-            if email:
-                jsonapi_data["data"]["attributes"]["email_addresses"] = contact_data["contact"]["email_addresses"]
-            if phone:
-                jsonapi_data["data"]["attributes"]["phone_numbers"] = contact_data["contact"]["phone_numbers"]
-            if state and "addresses" in contact_data["contact"]:
-                jsonapi_data["data"]["attributes"]["addresses"] = contact_data["contact"]["addresses"]
-
-            print(f"Trying JSON:API format: {json.dumps(jsonapi_data, indent=2)}")
-
-            jsonapi_response = requests.post(
-                contacts_url,
-                headers=headers,
-                json=jsonapi_data,
-                timeout=20
-            )
-
-            print(f"JSON:API response status: {jsonapi_response.status_code}")
-            print(f"JSON:API response body: {jsonapi_response.text[:200]}...")
-
-            if jsonapi_response.status_code in [200, 201]:
-                print("Successfully created contact with JSON:API format")
-                return jsonapi_response.json()
-
-            # If both formats failed, use mock data for development purposes
-            print("All API formats failed, using mock data for development")
+            print("Failed to create contact - using mock data for development")
 
             # Create a unique hash-based ID for consistent mock data
             mock_id = hashlib.md5(f"{full_name}:{email}".encode()).hexdigest()[:8]
