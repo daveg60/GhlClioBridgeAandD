@@ -232,8 +232,11 @@ def ghl_webhook():
         data = request.json
         print("✅ Incoming webhook data from GHL:", data)
 
-        # Extract caller info from transcript
+        # Extract caller info from transcript - check both main data and customData
         transcription = data.get("transcription", "")
+        # Also check if transcription is in customData
+        if not transcription and "customData" in data and isinstance(data["customData"], dict):
+            transcription = data["customData"].get("transcription", "")
         caller_info = extract_caller_info_from_transcript(transcription)
 
         # Use extracted info or fall back to webhook data (with proper title case)
