@@ -79,10 +79,14 @@ def extract_caller_info_from_transcript(transcription):
 
     # Look for name patterns like "My name is John Smith" or "This is Sarah Johnson"
     name_patterns = [
-        r"my name is ([A-Za-z\s]+)",
-        r"this is ([A-Za-z\s]+)",
-        r"i'm ([A-Za-z\s]+)",
-        r"i am ([A-Za-z\s]+)"
+        r"my name is ([A-Za-z\s]+?)[\.\,\n]",  # Matches "My name is Jennifer Parker."
+        r"this is ([A-Za-z\s]+?)[\.\,\n]",     # Matches "This is John Smith."
+        r"i'm ([A-Za-z\s]+?)[\.\,\n]",         # Matches "I'm Sarah Johnson."
+        r"i am ([A-Za-z\s]+?)[\.\,\n]",        # Matches "I am Mike Davis."
+        r"my name is ([A-Za-z\s]+)",           # Fallback without punctuation
+        r"this is ([A-Za-z\s]+)",              # Fallback without punctuation
+        r"i'm ([A-Za-z\s]+)",                  # Fallback without punctuation
+        r"i am ([A-Za-z\s]+)"                  # Fallback without punctuation
     ]
 
     # Look for phone patterns
