@@ -245,7 +245,7 @@ def ghl_webhook():
             contact_data = create_clio_contact(full_name, email, phone, state, token=clio_token)
 
             # Create matter in Clio
-            matter_data = create_clio_matter(contact_data, practice_area, case_description)
+            matter_data = create_clio_matter(contact_data, practice_area, case_description, token=clio_token)
 
             return jsonify({
                 "status": "success",
@@ -531,8 +531,13 @@ def create_clio_contact(full_name, email, phone, state=None, token=None):
     except Exception as e:
         print(f"Exception when creating contact: {str(e)}")
         return {"error": f"Exception when creating contact: {str(e)}"}
-def create_clio_matter(contact_data, practice_area, description):
+
+def create_clio_matter(contact_data, practice_area, description, token=None):
     """Create a matter in Clio"""
+    import requests
+    import json
+    from flask import session
+
     # Using real API for production
     USE_MOCK_DATA = False
 
@@ -577,6 +582,11 @@ def create_clio_matter(contact_data, practice_area, description):
         print("❌ Contact data doesn't contain a valid ID")
         return {"error": "Cannot create matter without valid contact", "details": "Contact ID not found"}
 
+    # Get authentication token - use passed token or from session
+    auth_token = token or session.get('clio_token', '')
+    if not auth_token:
+        return {"error": "No Clio authentication token available"}
+
     # Prepare matter data
     matter_data = {
         "data": {
@@ -600,15 +610,17 @@ def create_clio_matter(contact_data, practice_area, description):
 
     # Make API request to Clio
     headers = {
-        "Authorization": f"Bearer {session['clio_token']}",
-        "Content-Type": "application/json"
+        "Authorization": f"Bearer {auth_token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json"
     }
 
     print(f"📤 Sending matter creation request: {json.dumps(matter_data, indent=2)}")
     response = requests.post(
         f"{CLIO_API_BASE}/matters",
         headers=headers,
-        json=matter_data
+        json=matter_data,
+        timeout=20
     )
 
     print(f"📥 Matter creation response status: {response.status_code}")
