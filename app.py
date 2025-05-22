@@ -64,6 +64,50 @@ def extract_practice_area(description):
     # If no match is found, return "Other"
     return "Other"
 
+def extract_caller_info_from_transcript(transcription):
+    """Extract caller name, phone, email from transcript text"""
+    import re
+
+    caller_info = {
+        "name": "",
+        "phone": "", 
+        "email": ""
+    }
+
+    if not transcription:
+        return caller_info
+
+    # Look for name patterns like "My name is John Smith" or "This is Sarah Johnson"
+    name_patterns = [
+        r"my name is ([A-Za-z\s]+)",
+        r"this is ([A-Za-z\s]+)",
+        r"i'm ([A-Za-z\s]+)",
+        r"i am ([A-Za-z\s]+)"
+    ]
+
+    # Look for phone patterns
+    phone_pattern = r"(\d{3}[-.]?\d{3}[-.]?\d{4})"
+
+    # Look for email patterns  
+    email_pattern = r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})"
+
+    # Extract information
+    for pattern in name_patterns:
+        match = re.search(pattern, transcription.lower())
+        if match:
+            caller_info["name"] = match.group(1).title()
+            break
+
+    phone_match = re.search(phone_pattern, transcription)
+    if phone_match:
+        caller_info["phone"] = phone_match.group(1)
+
+    email_match = re.search(email_pattern, transcription.lower())
+    if email_match:
+        caller_info["email"] = email_match.group(1)
+
+    return caller_info
+
 # Routes
 @app.route('/')
 def index():
@@ -93,7 +137,7 @@ def index():
 
     # Generate auth URL for easy re-authentication
     auth_url = f"{CLIO_AUTH_URL}?response_type=code&client_id={CLIO_CLIENT_ID}&redirect_uri={CLIO_REDIRECT_URI}"
-    
+
     if clio_token:
         return jsonify({
             "status": "connected",
@@ -184,11 +228,14 @@ def ghl_webhook():
         data = request.json
         print("✅ Incoming webhook data from GHL:", data)
 
-        # Extract relevant data
-        # This will depend on the actual structure of your GHL webhook data
-        full_name = data.get("full_name", "")
-        email = data.get("email", "")
-        phone = data.get("phone", "")
+        # Extract caller info from transcript
+        transcription = data.get("transcription", "")
+        caller_info = extract_caller_info_from_transcript(transcription)
+
+        # Use extracted info or fall back to webhook data (with proper title case)
+        full_name = caller_info["name"] or data.get("full_name", "").title()
+        email = caller_info["email"] or data.get("email", "")
+        phone = caller_info["phone"] or data.get("phone", "")
         case_description = ""
         state = data.get("state", "")
 
@@ -196,22 +243,19 @@ def ghl_webhook():
         if "customData" in data and isinstance(data["customData"], dict):
             custom_data = data["customData"]
             if not full_name:
-                full_name = custom_data.get("full_name", "")
+                full_name = custom_data.get("full_name", "").title()
             if not email:
                 email = custom_data.get("email", "")
             if not phone:
                 phone = custom_data.get("phone", "")
             case_description = custom_data.get("case_description", "")
 
-        # Check for transcription
-        transcription = data.get("transcription", "")
-
         # Extract practice area
         practice_area = extract_practice_area(case_description or transcription)
 
         # Get the real Clio token from session or database
         clio_token = None
-        
+
         # Try to get token from session first
         if 'clio_token' in session:
             clio_token = session['clio_token']
@@ -233,13 +277,13 @@ def ghl_webhook():
                 conn.close()
             except Exception as e:
                 print(f"⚠️ Database error (will use mock data): {str(e)}")
-                
+
         # Enable mock data only if we don't have a real token
         USE_MOCK_DATA = clio_token is None
         if USE_MOCK_DATA:
             print("⚠️ No Clio token found - using mock data for testing")
             clio_token = "mock-token-for-testing"
-        
+
         if clio_token:
             # Create contact in Clio and pass the token
             contact_data = create_clio_contact(full_name, email, phone, state, token=clio_token)
@@ -273,7 +317,6 @@ def clio_webhook():
 def ping():
     """Simple health check endpoint"""
     return jsonify({"status": "ok", "message": "Service is running"}), 200
-
 
 @app.route('/api/logs', methods=['GET'])
 def view_logs():
@@ -352,7 +395,6 @@ def view_logs():
             "status": "error",
             "message": f"Error getting logs: {str(e)}"
         }), 500
-
 
 @app.route('/api/add-test-transaction', methods=['POST'])
 def add_test_transaction():
@@ -621,6 +663,7 @@ def create_clio_matter(contact_data, practice_area, description, token=None):
     except Exception as e:
         print(f"❌ Exception creating matter: {str(e)}")
         return {"error": f"Exception creating matter: {str(e)}"}
+
 # Main entry point
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
