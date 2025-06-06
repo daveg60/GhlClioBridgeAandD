@@ -27,42 +27,286 @@ def requires_auth(f):
     return decorated
 
 def extract_practice_area(description):
-    """Extract practice area from description text"""
+    """Extract practice area from description text - EXPANDED for all legal matters"""
     if not description:
         return "Other"
 
     description_lower = description.lower()
 
-    # Check for personal injury keywords
-    personal_injury_keywords = ["personal injury", "accident", "injury", "hurt", "slip and fall", 
-                               "car accident", "medical malpractice", "wrongful death"]
+    # Personal Injury Law
+    personal_injury_keywords = [
+        "personal injury", "accident", "injury", "hurt", "slip and fall", 
+        "car accident", "auto accident", "motor vehicle", "medical malpractice", 
+        "wrongful death", "premises liability", "product liability", "dog bite",
+        "bicycle accident", "motorcycle accident", "pedestrian accident",
+        "nursing home abuse", "construction accident", "workplace injury"
+    ]
     for keyword in personal_injury_keywords:
         if keyword in description_lower:
             return "Personal Injury"
 
-    # Check for family law keywords
-    family_law_keywords = ["divorce", "custody", "child support", "alimony", "marriage", 
-                          "separation", "adoption", "family", "spouse"]
+    # Family Law
+    family_law_keywords = [
+        "divorce", "custody", "child support", "alimony", "spousal support",
+        "marriage", "separation", "adoption", "family", "spouse", "prenup",
+        "prenuptial", "domestic violence", "restraining order", "paternity",
+        "visitation", "guardianship", "child custody", "domestic relations"
+    ]
     for keyword in family_law_keywords:
         if keyword in description_lower:
             return "Family Law"
 
-    # Check for criminal law keywords
-    criminal_law_keywords = ["criminal", "arrest", "charge", "offense", "crime", "dui", "dwi", 
-                            "theft", "assault", "probation", "jail", "prison", "criminal attorney"]
+    # Criminal Law
+    criminal_law_keywords = [
+        "criminal", "arrest", "arrested", "charge", "charged", "offense", 
+        "crime", "dui", "dwi", "owi", "theft", "assault", "battery",
+        "probation", "jail", "prison", "felony", "misdemeanor", "warrant",
+        "drug", "trafficking", "possession", "domestic violence", "fraud",
+        "embezzlement", "burglary", "robbery", "homicide", "manslaughter"
+    ]
     for keyword in criminal_law_keywords:
         if keyword in description_lower:
             return "Criminal Law"
 
-    # Check for estate planning keywords
-    estate_planning_keywords = ["estate", "will", "trust", "inheritance", "probate", 
-                              "executor", "beneficiary", "death", "asset"]
+    # Estate Planning & Probate
+    estate_planning_keywords = [
+        "estate", "will", "trust", "inheritance", "probate", "executor",
+        "beneficiary", "death", "asset", "living will", "power of attorney",
+        "estate planning", "succession", "heir", "testamentary", "guardian",
+        "conservatorship", "elder law", "medicaid planning"
+    ]
     for keyword in estate_planning_keywords:
         if keyword in description_lower:
             return "Estate Planning"
 
-    # If no match is found, return "Other"
-    return "Other"
+    # Real Estate Law
+    real_estate_keywords = [
+        "real estate", "property", "house", "home", "closing", "deed",
+        "title", "mortgage", "foreclosure", "landlord", "tenant", "lease",
+        "eviction", "zoning", "easement", "boundary", "construction",
+        "homeowners association", "hoa", "purchase agreement"
+    ]
+    for keyword in real_estate_keywords:
+        if keyword in description_lower:
+            return "Real Estate"
+
+    # Business Law
+    business_law_keywords = [
+        "business", "contract", "llc", "corporation", "partnership",
+        "employment", "fired", "wrongful termination", "discrimination",
+        "harassment", "wage", "overtime", "breach of contract", "lawsuit",
+        "commercial", "intellectual property", "trademark", "copyright",
+        "non-compete", "partnership dispute", "shareholder"
+    ]
+    for keyword in business_law_keywords:
+        if keyword in description_lower:
+            return "Business Law"
+
+    # Immigration Law
+    immigration_keywords = [
+        "immigration", "visa", "green card", "citizenship", "deportation",
+        "asylum", "refugee", "work permit", "naturalization", "ice",
+        "immigration court", "removal proceedings", "family petition"
+    ]
+    for keyword in immigration_keywords:
+        if keyword in description_lower:
+            return "Immigration"
+
+    # Bankruptcy Law
+    bankruptcy_keywords = [
+        "bankruptcy", "chapter 7", "chapter 13", "debt", "foreclosure",
+        "creditor", "discharge", "filing bankruptcy", "debt relief"
+    ]
+    for keyword in bankruptcy_keywords:
+        if keyword in description_lower:
+            return "Bankruptcy"
+
+    # Social Security Disability
+    disability_keywords = [
+        "disability", "social security", "ssdi", "ssi", "disabled",
+        "disability benefits", "social security disability"
+    ]
+    for keyword in disability_keywords:
+        if keyword in description_lower:
+            return "Social Security Disability"
+
+    # Workers' Compensation
+    workers_comp_keywords = [
+        "workers compensation", "workers comp", "work injury", 
+        "on the job injury", "workplace accident", "injured at work"
+    ]
+    for keyword in workers_comp_keywords:
+        if keyword in description_lower:
+            return "Workers' Compensation"
+
+    # Civil Rights
+    civil_rights_keywords = [
+        "civil rights", "discrimination", "police brutality", "excessive force",
+        "constitutional rights", "section 1983", "civil lawsuit"
+    ]
+    for keyword in civil_rights_keywords:
+        if keyword in description_lower:
+            return "Civil Rights"
+
+    # Tax Law
+    tax_keywords = [
+        "tax", "irs", "tax debt", "tax lien", "tax levy", "audit",
+        "tax resolution", "offer in compromise", "innocent spouse"
+    ]
+    for keyword in tax_keywords:
+        if keyword in description_lower:
+            return "Tax Law"
+
+    # If no match is found, return "General"
+    return "General"
+def summarize_transcript(transcription, max_length=200):
+    """
+    Create a concise summary of the transcript for matter description
+    """
+    if not transcription or len(transcription) <= max_length:
+        return transcription
+
+    import re
+
+    # Clean up the transcript and separate human vs bot lines
+    lines = transcription.split('\n')
+    human_lines = []
+    bot_lines = []
+
+    for line in lines:
+        if 'human:' in line.lower():
+            # Remove "human:" prefix and clean
+            clean_line = re.sub(r'^human:\s*', '', line, flags=re.IGNORECASE).strip()
+            if clean_line:
+                human_lines.append(clean_line)
+        elif 'bot:' in line.lower():
+            clean_line = re.sub(r'^bot:\s*', '', line, flags=re.IGNORECASE).strip()
+            if clean_line:
+                bot_lines.append(clean_line)
+
+    # Focus on human lines first - this is where the legal issue will be
+    human_text = " ".join(human_lines)
+
+    # Look for the main legal issue from human speech
+    legal_issue_patterns = [
+        r"(I need help with .+?)[\.\!\?]",
+        r"(I want to .+?)[\.\!\?]",
+        r"(I was .+?)[\.\!\?]", 
+        r"(I have been .+?)[\.\!\?]",
+        r"(My .+ and I .+?)[\.\!\?]",  # "My husband and I are getting divorced"
+        r"(My .+?)[\.\!\?]",
+        r"(There was .+?)[\.\!\?]",
+        r"(Someone .+?)[\.\!\?]",
+        r"(I got .+?)[\.\!\?]",
+        r"(I am .+?)[\.\!\?]"
+    ]
+
+    main_issue = ""
+    for pattern in legal_issue_patterns:
+        match = re.search(pattern, human_text, re.IGNORECASE)
+        if match:
+            potential_issue = match.group(1).strip()
+            # Filter out administrative/contact info statements
+            if not any(admin_word in potential_issue.lower() for admin_word in 
+                      ['name is', 'phone number', 'email', 'address', 'calling about', 'contact']):
+                main_issue = potential_issue
+                break
+
+    # If no clear issue found, look for legal keywords in human text
+    if not main_issue:
+        # Look for specific legal situations
+        legal_keywords = {
+            'divorce': 'seeking divorce assistance',
+            'custody': 'need help with child custody',
+            'accident': 'involved in an accident',
+            'injured': 'sustained injuries',
+            'arrested': 'facing criminal charges',
+            'fired': 'employment issue',
+            'will': 'estate planning matter',
+            'sued': 'involved in litigation',
+            'bankruptcy': 'bankruptcy consultation',
+            'disability': 'disability benefits matter',
+            'immigration': 'immigration issue',
+            'tax': 'tax matter',
+            'contract': 'contract dispute',
+            'real estate': 'real estate matter'
+        }
+
+        for keyword, description in legal_keywords.items():
+            if keyword in human_text.lower():
+                main_issue = description
+                break
+
+    # Look for additional context details
+    details = []
+
+    # Timeframes
+    time_patterns = [
+        r"(last week|yesterday|today|last month|this week|recently|[A-Za-z]+ \d+)",
+        r"(\d+ (days|weeks|months|years) ago)"
+    ]
+
+    for pattern in time_patterns:
+        match = re.search(pattern, human_text, re.IGNORECASE)
+        if match:
+            details.append(match.group(1))
+            break
+
+    # Specific legal context from human speech
+    context_keywords = [
+        "accident", "injury", "divorce", "custody", "arrested", "fired", 
+        "sued", "died", "will", "estate", "contract", "property", "bankruptcy",
+        "disability", "immigration", "tax"
+    ]
+    for keyword in context_keywords:
+        if keyword.lower() in human_text.lower():
+            if f"involving {keyword}" not in details:  # Avoid duplicates
+                details.append(f"involving {keyword}")
+            break
+
+    # Build the final summary
+    summary_parts = []
+
+    if main_issue:
+        summary_parts.append(main_issue)
+    elif human_text:
+        # Fallback: use first substantial human statement
+        first_substantial = ""
+        for line in human_lines:
+            if len(line) > 10 and not any(admin in line.lower() for admin in 
+                                        ['name is', 'phone', 'email', 'address']):
+                first_substantial = line
+                break
+        if first_substantial:
+            summary_parts.append(first_substantial[:100])
+
+    if details:
+        summary_parts.append(f"({', '.join(details)})")
+
+    summary = " ".join(summary_parts)
+
+    # If still too long, truncate intelligently
+    if len(summary) > max_length:
+        if '(' in summary:
+            # Keep main issue, truncate details
+            main_part = summary.split('(')[0].strip()
+            if len(main_part) <= max_length - 3:
+                summary = main_part
+            else:
+                summary = main_part[:max_length-3] + "..."
+        else:
+            # Truncate at sentence boundary
+            sentences = summary.split('.')
+            summary = sentences[0]
+            if len(summary) > max_length:
+                summary = summary[:max_length-3] + "..."
+
+    # Final fallback
+    if not summary or len(summary) < 10:
+        summary = "Legal consultation request from GoHighLevel"
+
+    return summary
+
 
 def extract_caller_info_from_transcript(transcription):
     """Extract caller name, phone, email from transcript text"""
@@ -150,7 +394,25 @@ def extract_caller_info_from_transcript(transcription):
         caller_info["email"] = email_match.group(1)
 
     return caller_info
+def should_create_matter(transcription):
+    """
+    Check if the AI agent rejected the case based on transcript
+    """
+    if not transcription:
+        return True, "No transcript to analyze"
 
+    rejection_phrases = [
+        "i'm sorry, we only handle",
+        "i'm sorry, but we"
+    ]
+
+    transcript_lower = transcription.lower()
+
+    for phrase in rejection_phrases:
+        if phrase in transcript_lower:
+            return False, "Case rejected by AI agent"
+
+    return True, "Case accepted"
 # Routes
 @app.route('/')
 def index():
@@ -271,23 +533,25 @@ def ghl_webhook():
         data = request.json
         print("✅ Incoming webhook data from GHL:", data)
 
-        # Extract caller info from transcript
+        # Extract transcription first
         transcription = data.get("transcription", "")
-        
+
         # Also check if transcription is in customData
         if not transcription and "customData" in data and isinstance(data["customData"], dict):
             transcription = data["customData"].get("transcription", "")
-            
-        # Direct extraction of name from transcript
-        if transcription:
-            # Try to extract name directly from obvious patterns
-            import re
-            name_match = re.search(r'human:\s*My name is ([A-Za-z]+)\s+([A-Za-z]+)', transcription)
-            if name_match:
-                first_name = name_match.group(1).strip()
-                last_name = name_match.group(2).strip()
-                print(f"✓ Extracted name directly from transcript: {first_name} {last_name}")
-                
+
+        # CHECK FOR REJECTION FIRST - before any processing
+        should_create, reason = should_create_matter(transcription)
+        if not should_create:
+            print(f"🚫 Not creating matter: {reason}")
+            return jsonify({
+                "status": "success",
+                "message": "Call handled - case rejected by AI agent"
+            })
+
+        print("✅ Case accepted - proceeding with contact/matter creation")
+
+        # Extract caller info from transcript
         caller_info = extract_caller_info_from_transcript(transcription)
 
         # Use extracted info or fall back to webhook data (with proper title case)
@@ -296,7 +560,7 @@ def ghl_webhook():
         phone = caller_info["phone"] or data.get("phone", "")
         case_description = ""
         state = data.get("state", "")
-        
+
         # Process full name into first and last name for Clio API
         first_name = ""
         last_name = ""
@@ -326,6 +590,7 @@ def ghl_webhook():
 
         # Extract practice area from case description or transcription
         practice_area = extract_practice_area(case_description)
+        print(f"📋 Detected practice area: {practice_area}")
 
         # Get the real Clio token from session or database
         clio_token = None
@@ -339,7 +604,6 @@ def ghl_webhook():
             try:
                 import psycopg2
                 db_url = os.environ.get("DATABASE_URL")
-                # Use connection pooling to avoid rate limit issues
                 conn = psycopg2.connect(db_url, connect_timeout=5)
                 cursor = conn.cursor()
                 cursor.execute("SELECT oauth_token FROM api_configs WHERE service = 'clio' AND oauth_token IS NOT NULL LIMIT 1")
@@ -369,7 +633,8 @@ def ghl_webhook():
                 "status": "success",
                 "message": "Data forwarded to Clio",
                 "clio_contact": contact_data,
-                "clio_matter": matter_data
+                "clio_matter": matter_data,
+                "practice_area": practice_area
             })
         else:
             return jsonify({
@@ -651,14 +916,16 @@ def create_clio_contact(full_name, email, phone, state=None, token=None, first_n
 
 def create_clio_matter(contact_data, practice_area, description, token=None):
     """Create a matter in Clio using the correct API format"""
-    # Ensure description doesn't exceed 255 characters (Clio API limit)
-    if description and len(description) > 255:
-        # Create a shorter description
-        short_description = "Lead from GoHighLevel: " + description[:230].replace("bot:", "").replace("human:", "").strip()
-        description = short_description
     import requests
     import json
     from flask import session
+
+    # Summarize the transcript if it's too long
+    if description and len(description) > 255:
+        summarized_description = summarize_transcript(description, max_length=240)
+        print(f"📝 Original length: {len(description)}")
+        print(f"📝 Summarized: {summarized_description}")
+        description = summarized_description
 
     # Extract contact ID
     contact_id = contact_data.get("data", {}).get("id")
@@ -743,7 +1010,6 @@ def create_clio_matter(contact_data, practice_area, description, token=None):
     except Exception as e:
         print(f"❌ Exception creating matter: {str(e)}")
         return {"error": f"Exception creating matter: {str(e)}"}
-
 # Main entry point
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
