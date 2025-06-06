@@ -309,7 +309,7 @@ def summarize_transcript(transcription, max_length=200):
 
 
 def extract_caller_info_from_transcript(transcription):
-    """Extract caller name, phone, email from transcript text"""
+    """Extract caller name, phone, email from transcript text - handles ALL formats"""
     import re
 
     caller_info = {
@@ -317,82 +317,205 @@ def extract_caller_info_from_transcript(transcription):
         "phone": "", 
         "email": ""
     }
-    
+
     # For debugging
     print(f"Extracting info from transcript: {transcription[:100]}...")
 
     if not transcription:
         return caller_info
 
-    # First try to directly detect names from dialog format
-    # Look for dialog with the person's name mentioned by the bot
-    name_from_dialogue = None
+    # Split into lines for easier processing
     lines = transcription.split('\n')
-    for i, line in enumerate(lines):
-        if i > 0 and 'bot:' in line.lower() and 'thanks' in line.lower():
-            # Look for patterns like "Thanks Jennifer."
-            thanks_match = re.search(r'[Tt]hanks\s+([A-Za-z]+)[\.!\s]', line)
-            if thanks_match:
-                name_from_dialogue = thanks_match.group(1)
-                break
-    
-    # If we found a first name from dialogue, try to find the full name
-    full_name = ""
-    if name_from_dialogue:
-        # Look for the full name in human lines
-        for line in lines:
-            if 'human:' in line.lower() and 'name is' in line.lower() and name_from_dialogue.lower() in line.lower():
-                name_match = re.search(r'[Mm]y name is ([A-Za-z\s]+)', line)
-                if name_match:
-                    full_name = name_match.group(1).strip()
-                    break
-    
-    # If we found a full name, use it
-    if full_name:
-        caller_info["name"] = full_name
-    elif name_from_dialogue:
-        # Just use the first name if that's all we found
-        caller_info["name"] = name_from_dialogue
-    else:
-        # Fall back to standard patterns
-        name_patterns = [
-            r"[Mm]y name is ([A-Za-z\s]+)[\.|\,]",   # Matches "My name is Jennifer Parker."
-            r"[Mm]y name is ([A-Za-z\s]+)",          # Fallback without punctuation
-            r"[Tt]his is ([A-Za-z\s]+)",             # Fallback "This is John Smith"
-            r"[Ii]'m ([A-Za-z\s]+)",                 # Fallback "I'm John Smith"
-            r"[Cc]all me ([A-Za-z\s]+)"              # Fallback "Call me John"
-        ]
-        
-        for pattern in name_patterns:
-            for line in lines:
-                if 'human:' in line.lower():
-                    match = re.search(pattern, line)
-                    if match:
-                        caller_info["name"] = match.group(1).strip()
-                        break
+
+    # Look for name patterns - more specific now
+    name_patterns = [
+        r"[Mm]y name is ([A-Za-z\s]+)",               # "My name is David Glick"
+        r"[Ii]t'?s ([A-Za-z\s]+)",                    # "It's David Glick" 
+        r"[Tt]his is ([A-Za-z\s]+)",                  # "This is David Glick"
+        r"[Ii]'m ([A-Za-z\s]+)",                      # "I'm David Glick"
+        r"[Cc]all me ([A-Za-z\s]+)"                   # "Call me David"
+    ]
+
+    # Look for the name in ANY human/caller line - handle ALL formats we've seen
+    for line in lines:
+        line = line.strip()
+
+        # Check if this is a human/caller line (handle multiple formats)
+        is_human_line = (
+            line.lower().startswith('human:') or 
+            line.lower().startswith('caller:') or
+            line.lower().startswith('**caller:') or
+            '**caller:**' in line.lower() or
+            'caller:**' in line.lower()
+        )
+
+        if is_human_line:
+            # Clean the line - remove ALL prefixes we've seen
+            clean_line = line
+            clean_line = re.sub(r'^\*+\s*caller:\s*', '', clean_line, flags=re.IGNORECASE)
+            clean_line = re.sub(r'^caller:\s*', '', clean_line, flags=re.IGNORECASE)  
+            clean_line = re.sub(r'^human:\s*', '', clean_line, flags=re.IGNORECASE)
+            clean_line = re.sub(r'^\*+', '', clean_line).strip()
+
+            print(f"🔍 Checking human/caller line: '{clean_line}'")
+
+            for pattern in name_patterns:
+                match = re.search(pattern, clean_line, re.IGNORECASE)
+                if match:
+                    potential_name = match.group(1).strip()
+
+                    # Filter out common false positives
+                    false_positives = [
+                        'not sure', 'not sure what', 'good', 'fine', 'okay', 'ok',
+                        'yes', 'no', 'yeah', 'yep', 'sure', 'right', 'correct',
+                        'that', 'this', 'here', 'there', 'help', 'calling',
+                        'having trouble', 'trouble with', 'need help', 'looking for'
+                    ]
+
+                    # Check if it's a false positive
+                    is_false_positive = False
+                    for fp in false_positives:
+                        if fp in potential_name.lower():
+                            is_false_positive = True
+                            break
+
+                    if not is_false_positive and len(potential_name) > 1:
+                        # Additional validation: should be a proper name
+                        words = potential_name.split()
+                        if len(words) >= 1:  # Accept single names too
+                            # Remove trailing commas and clean up
+                            clean_name = re.sub(r',.*$', '', potential_name).strip()
+                            caller_info["name"] = clean_name.title()
+                            print(f"✓ Successfully extracted name: {caller_info['name']}")
+                            break
+
+            # If we found a name, break out of the outer loop too
             if caller_info["name"]:
                 break
-    
-    # Process the name to get first and last name properly
-    if caller_info["name"]:
-        # Title case and clean up extra spaces
-        caller_info["name"] = " ".join([word.capitalize() for word in caller_info["name"].split()])
-        print(f"✓ Successfully extracted name: {caller_info['name']}")
-    else:
+
+    # If still no name found, try alternative approach - look for bot/AI asking for name
+    if not caller_info["name"]:
+        print("🔍 Trying alternative name extraction methods...")
+
+        # Look for patterns where bot/AI agent asks for name and human responds
+        for i, line in enumerate(lines):
+            line = line.strip()
+
+            # Check if bot/AI is asking for name
+            is_bot_asking = (
+                ('bot:' in line.lower() or 'ai agent:' in line.lower()) and 
+                ('name' in line.lower() or 'could i have' in line.lower())
+            )
+
+            if is_bot_asking:
+                print(f"🔍 Found bot/AI asking for name: '{line}'")
+
+                # Look at the next human response
+                if i + 1 < len(lines):
+                    next_line = lines[i + 1].strip()
+                    print(f"🔍 Next line: '{next_line}'")
+
+                    # Check if next line is human response
+                    is_human_response = (
+                        next_line.lower().startswith('human:') or 
+                        next_line.lower().startswith('caller:') or
+                        '**caller:**' in next_line.lower()
+                    )
+
+                    if is_human_response:
+                        # Clean the response
+                        clean_response = next_line
+                        clean_response = re.sub(r'^\*+\s*caller:\s*', '', clean_response, flags=re.IGNORECASE)
+                        clean_response = re.sub(r'^caller:\s*', '', clean_response, flags=re.IGNORECASE)
+                        clean_response = re.sub(r'^human:\s*', '', clean_response, flags=re.IGNORECASE)
+                        clean_response = re.sub(r'^\*+', '', clean_response).strip()
+
+                        print(f"🔍 Clean human response: '{clean_response}'")
+
+                        # Try to extract name from this response
+                        for pattern in name_patterns:
+                            match = re.search(pattern, clean_response, re.IGNORECASE)
+                            if match:
+                                potential_name = match.group(1).strip()
+
+                                # Check if it's a false positive
+                                is_false_positive = False
+                                false_positives = [
+                                    'not sure', 'not sure what', 'having trouble', 'trouble with',
+                                    'need help', 'looking for', 'yes', 'no', 'yeah'
+                                ]
+                                for fp in false_positives:
+                                    if fp in potential_name.lower():
+                                        is_false_positive = True
+                                        break
+
+                                if not is_false_positive and len(potential_name) > 1:
+                                    clean_name = re.sub(r',.*$', '', potential_name).strip()
+                                    caller_info["name"] = clean_name.title()
+                                    print(f"✓ Found name in response to bot/AI question: {caller_info['name']}")
+                                    break
+
+                        if caller_info["name"]:
+                            break
+
+    # Final fallback: look for direct name patterns anywhere in transcript
+    if not caller_info["name"]:
+        print("🔍 Final fallback: looking for direct name patterns...")
+
+        # Look for "My name is" anywhere in the transcript
+        for pattern in name_patterns:
+            match = re.search(pattern, transcription, re.IGNORECASE)
+            if match:
+                potential_name = match.group(1).strip()
+
+                # Same validation as before
+                false_positives = [
+                    'not sure', 'not sure what', 'having trouble', 'trouble with',
+                    'need help', 'looking for', 'yes', 'no', 'yeah'
+                ]
+
+                is_false_positive = False
+                for fp in false_positives:
+                    if fp in potential_name.lower():
+                        is_false_positive = True
+                        break
+
+                if not is_false_positive and len(potential_name) > 1:
+                    clean_name = re.sub(r',.*$', '', potential_name).strip()
+                    caller_info["name"] = clean_name.title()
+                    print(f"✓ Found name with fallback method: {caller_info['name']}")
+                    break
+
+    if not caller_info["name"]:
         print("⚠ Could not extract a name from the transcript")
 
-    # Look for phone patterns
-    phone_pattern = r"(\d{3}[-.]?\d{3}[-.]?\d{4})"
-    phone_match = re.search(phone_pattern, transcription)
-    if phone_match:
-        caller_info["phone"] = phone_match.group(1)
+    # Look for phone patterns (keep this the same)
+    phone_patterns = [
+        r"(\+?1?\s*\(?\d{3}\)?\s*[-.\s]?\d{3}\s*[-.\s]?\d{4})",
+        r"(\d{3}\s+\d{3}\s+\d{4})",
+        r"(\d{10})"
+    ]
+
+    for pattern in phone_patterns:
+        match = re.search(pattern, transcription)
+        if match:
+            phone = match.group(1)
+            phone = re.sub(r'[^\d+]', '', phone)
+            if phone.startswith('1') and len(phone) == 11:
+                phone = phone[1:]
+            if len(phone) == 10:
+                caller_info["phone"] = f"({phone[:3]}) {phone[3:6]}-{phone[6:]}"
+                print(f"✓ Extracted phone: {caller_info['phone']}")
+                break
 
     # Look for email patterns  
     email_pattern = r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})"
     email_match = re.search(email_pattern, transcription.lower())
     if email_match:
         caller_info["email"] = email_match.group(1)
+        print(f"✓ Extracted email: {caller_info['email']}")
 
+    print(f"📋 Final extraction results: {caller_info}")
     return caller_info
 def should_create_matter(transcription):
     """
@@ -413,6 +536,27 @@ def should_create_matter(transcription):
             return False, "Case rejected by AI agent"
 
     return True, "Case accepted"
+
+def debug_webhook_data(data):
+    """Helper function to debug incoming webhook data"""
+    print("🔍 DEBUGGING WEBHOOK DATA:")
+    print(f"Raw data keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
+
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if isinstance(value, (str, int, float, bool)):
+                print(f"  {key}: {value}")
+            elif isinstance(value, dict):
+                print(f"  {key}: (dict with {len(value)} keys)")
+                for subkey in value.keys():
+                    print(f"    - {subkey}")
+            elif isinstance(value, list):
+                print(f"  {key}: (list with {len(value)} items)")
+            else:
+                print(f"  {key}: {type(value)}")
+
+    print("🔍 END DEBUG")
+    return data
 # Routes
 @app.route('/')
 def index():
@@ -532,14 +676,31 @@ def ghl_webhook():
     try:
         data = request.json
         print("✅ Incoming webhook data from GHL:", data)
-
+        debug_webhook_data(data)
         # Extract transcription first
         transcription = data.get("transcription", "")
 
         # Also check if transcription is in customData
         if not transcription and "customData" in data and isinstance(data["customData"], dict):
             transcription = data["customData"].get("transcription", "")
-
+        print("=" * 80)
+        print("🔍 TRANSCRIPT DEBUG:")
+        print(f"Raw transcription length: {len(transcription) if transcription else 0}")
+        if transcription:
+            print("Raw transcription content:")
+            print(repr(transcription))  # This shows exact content including \n, spaces, etc.
+            print("\nFirst 500 characters:")
+            print(transcription[:500])
+            print("\nSplit by lines:")
+            lines = transcription.split('\n')
+            for i, line in enumerate(lines[:10]):  # Show first 10 lines
+                print(f"Line {i}: {repr(line)}")
+        else:
+            print("❌ NO TRANSCRIPTION FOUND!")
+            print("Available data keys:", list(data.keys()))
+            if "customData" in data:
+                print("CustomData keys:", list(data["customData"].keys()) if isinstance(data["customData"], dict) else "Not a dict")
+        print("=" * 80)
         # CHECK FOR REJECTION FIRST - before any processing
         should_create, reason = should_create_matter(transcription)
         if not should_create:
@@ -622,12 +783,18 @@ def ghl_webhook():
             print("⚠️ No Clio token found - using mock data for testing")
             clio_token = "mock-token-for-testing"
 
-        if clio_token:
-            # Create contact in Clio and pass the token
-            contact_data = create_clio_contact(full_name, email, phone, state, token=clio_token, first_name=first_name, last_name=last_name)
+            if clio_token:
+                # Prepare address data for the new function
+                address_data = {
+                    "state": state,
+                    "country": "US"
+                }
 
-            # Create matter in Clio
-            matter_data = create_clio_matter(contact_data, practice_area, case_description, token=clio_token)
+                # Create contact in Clio
+                contact_data = create_clio_contact(full_name, phone, email, address_data)
+
+                # Create matter in Clio
+                matter_data = create_clio_matter(contact_data, practice_area, case_description, token=clio_token)
 
             return jsonify({
                 "status": "success",
@@ -787,137 +954,159 @@ def add_test_transaction():
         }), 500
 
 # Clio API Functions
-def create_clio_contact(full_name, email, phone, state=None, token=None, first_name=None, last_name=None):
-    """Create a contact in Clio using the Clio API documentation format"""
+def create_clio_contact(caller_name, phone, email="", address_data=None):
+        """Create a contact in Clio - FIXED VERSION"""
+
+        # Split the name properly to satisfy Clio's requirements
+        first_name = ""
+        last_name = ""
+
+        if caller_name and caller_name.strip():
+            name_parts = caller_name.strip().split()
+            if len(name_parts) == 1:
+                first_name = name_parts[0]
+                last_name = "."  # Clio requires at least one name, use placeholder
+            elif len(name_parts) >= 2:
+                first_name = name_parts[0]
+                last_name = " ".join(name_parts[1:])
+        else:
+            # If no name extracted, use placeholder names
+            first_name = "Unknown"
+            last_name = "Caller"
+
+        print(f"📋 Creating contact: {first_name} {last_name}")
+
+        # Prepare contact data
+        contact_data = {
+            "data": {
+                "type": "Person",
+                "first_name": first_name,
+                "last_name": last_name
+            }
+        }
+
+        # Add phone if provided
+        if phone:
+            contact_data["data"]["phone_numbers"] = [{
+                "number": phone,
+                "type": "work"
+            }]
+
+            # Add email if provided
+            if email:
+                contact_data["data"]["email_addresses"] = [{
+                    "address": email,
+                    "type": "work"
+                }]
+
+            # Add address if provided
+            if address_data:
+                addresses = []
+                address = {"type": "home"}
+
+                if address_data.get("state"):
+                    address["state"] = address_data["state"]
+                if address_data.get("country"):
+                    address["country"] = address_data["country"]
+                if address_data.get("city"):
+                    address["city"] = address_data["city"]
+                if address_data.get("postal_code"):
+                    address["postal_code"] = address_data["postal_code"]
+
+                if len(address) > 1:  # More than just "type"
+                    addresses.append(address)
+                    contact_data["data"]["addresses"] = addresses
+
+            # Get auth token
+            token = get_clio_token()
+            if not token:
+                print("❌ No Clio token available")
+                return None
+
+            print("Sending contact creation request to Clio API...")
+            print(f"Request data: {json.dumps(contact_data, indent=2)}")
+
+            try:
+                response = requests.post(
+                    "https://app.clio.com/api/v4/contacts",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json"
+                    },
+                    json=contact_data,
+                    timeout=30
+                )
+
+                print(f"Response status: {response.status_code}")
+
+                if response.status_code == 201:
+                    # Success!
+                    contact_info = response.json()
+                    print(f"✅ Contact created successfully!")
+                    return contact_info
+                else:
+                    print(f"Response body: {response.text[:500]}...")
+                    print(f"❌ Failed to create contact in Clio API - Status: {response.status_code}")
+
+                    # Check if it's a validation error we can fix
+                    if response.status_code == 422:
+                        try:
+                            error_data = response.json()
+                            print(f"Validation errors: {error_data}")
+
+                            # If name is still the issue, try with different approach
+                            if "name" in str(error_data).lower() or "first" in str(error_data).lower():
+                                print("🔄 Retrying with minimal contact data...")
+
+                                # Try with just phone number and minimal name
+                                minimal_data = {
+                                    "data": {
+                                        "type": "Person",
+                                        "first_name": first_name if first_name else "Unknown",
+                                        "last_name": last_name if last_name else "Caller"
+                                    }
+                                }
+
+                                if phone:
+                                    minimal_data["data"]["phone_numbers"] = [{
+                                        "number": phone,
+                                        "type": "work"
+                                    }]
+
+                                print(f"Minimal request: {json.dumps(minimal_data, indent=2)}")
+
+                                retry_response = requests.post(
+                                    "https://app.clio.com/api/v4/contacts",
+                                    headers={
+                                        "Authorization": f"Bearer {token}",
+                                        "Content-Type": "application/json"
+                                    },
+                                    json=minimal_data,
+                                    timeout=30
+                                )
+
+                                if retry_response.status_code == 201:
+                                    print("✅ Contact created with minimal data!")
+                                    return retry_response.json()
+                                else:
+                                    print(f"❌ Retry also failed: {retry_response.status_code}")
+                                    print(f"Retry response: {retry_response.text[:200]}...")
+
+                        except Exception as e:
+                            print(f"Error parsing validation response: {e}")
+
+                    return None
+
+            except Exception as e:
+                print(f"❌ Exception during contact creation: {e}")
+                return None
+
+def create_clio_matter(contact_data, practice_area, description, token=None):
+    """Create a matter in Clio using the correct API format with better error handling"""
     import requests
     import json
     import hashlib
     from datetime import datetime
-    from flask import session
-    
-    # Use provided first/last name if available, otherwise parse from full_name
-    if not first_name and not last_name and full_name:
-        name_parts = full_name.split(' ')
-        first_name = name_parts[0] if name_parts else ""
-        last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ""
-
-    # Get authentication token
-    auth_token = token or session.get('clio_token', '')
-    if not auth_token:
-        return {"error": "No Clio authentication token available"}
-
-    # API endpoint based on Clio documentation
-    CLIO_API_BASE = "https://app.clio.com/api/v4"
-    contacts_url = f"{CLIO_API_BASE}/contacts"
-
-    # Set up request headers
-    headers = {
-        "Authorization": f"Bearer {auth_token}",
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
-
-    # APPROACH 1: Corrected format based on Clio support feedback
-    # Using "data" wrapper instead of "contact" wrapper
-    contact_data = {
-        "data": {
-            "type": "Person",
-            "first_name": first_name,
-            "last_name": last_name
-        }
-    }
-
-    # Add email if provided
-    if email:
-        contact_data["data"]["email_addresses"] = [
-            {
-                "address": email,
-                "type": "work"
-            }
-        ]
-
-    # Add phone if provided
-    if phone:
-        contact_data["data"]["phone_numbers"] = [
-            {
-                "number": phone,
-                "type": "work"
-            }
-        ]
-
-    # Add state if provided
-    if state:
-        contact_data["data"]["addresses"] = [
-            {
-                "state": state,
-                "country": "US",
-                "type": "home"
-            }
-        ]
-
-    try:
-        print("Sending contact creation request to Clio API...")
-        print(f"Request data: {json.dumps(contact_data, indent=2)}")
-
-        response = requests.post(
-            contacts_url,
-            headers=headers,
-            json=contact_data,
-            timeout=20
-        )
-
-        print(f"Response status: {response.status_code}")
-        print(f"Response body: {response.text[:200]}...")  # First 200 chars
-
-        if response.status_code in [200, 201]:
-            print("Successfully created contact in Clio")
-            return response.json()
-        else:
-            print("Failed to create contact - using mock data for development")
-
-            # Create a unique hash-based ID for consistent mock data
-            mock_id = hashlib.md5(f"{full_name}:{email}".encode()).hexdigest()[:8]
-
-            # Return mock data with the expected structure
-            mock_contact = {
-                "data": {
-                    "id": f"mock-{mock_id}",
-                    "type": "contacts",
-                    "attributes": {
-                        "name": full_name,
-                        "first_name": first_name,
-                        "last_name": last_name,
-                        "created_at": datetime.now().isoformat(),
-                        "email_addresses": [
-                            {
-                                "address": email,
-                                "type": "work"
-                            }
-                        ] if email else [],
-                        "phone_numbers": [
-                            {
-                                "number": phone,
-                                "type": "work"
-                            }
-                        ] if phone else []
-                    }
-                }
-            }
-
-            return {
-                "error": "Failed to create contact in Clio API",
-                "mock_data": mock_contact,
-                "data": mock_contact["data"]  # For compatibility with successful responses
-            }
-
-    except Exception as e:
-        print(f"Exception when creating contact: {str(e)}")
-        return {"error": f"Exception when creating contact: {str(e)}"}
-
-def create_clio_matter(contact_data, practice_area, description, token=None):
-    """Create a matter in Clio using the correct API format"""
-    import requests
-    import json
     from flask import session
 
     # Summarize the transcript if it's too long
@@ -927,89 +1116,176 @@ def create_clio_matter(contact_data, practice_area, description, token=None):
         print(f"📝 Summarized: {summarized_description}")
         description = summarized_description
 
-    # Extract contact ID
-    contact_id = contact_data.get("data", {}).get("id")
+    # Better contact ID extraction with debugging
+    print(f"🔍 Contact data received: {json.dumps(contact_data, indent=2)}")
+
+    contact_id = None
+
+    # Try multiple ways to extract contact ID
+    if isinstance(contact_data, dict):
+        # Method 1: Standard API response format
+        if "data" in contact_data and isinstance(contact_data["data"], dict):
+            contact_id = contact_data["data"].get("id")
+            print(f"📋 Method 1 - Contact ID from data.id: {contact_id}")
+
+        # Method 2: Direct ID field
+        if not contact_id:
+            contact_id = contact_data.get("id")
+            print(f"📋 Method 2 - Contact ID from direct id: {contact_id}")
+
+        # Method 3: Check if it's an error response with mock data
+        if not contact_id and "mock_data" in contact_data:
+            mock_data = contact_data["mock_data"]
+            if "data" in mock_data:
+                contact_id = mock_data["data"].get("id")
+                print(f"📋 Method 3 - Contact ID from mock_data: {contact_id}")
+
     if not contact_id:
-        return {"error": "Cannot create matter without valid contact ID"}
+        error_msg = f"Cannot create matter without valid contact ID. Contact data: {contact_data}"
+        print(f"❌ {error_msg}")
+        return {"error": error_msg}
+
+    print(f"✅ Using contact ID: {contact_id}")
 
     # Get authentication token
     auth_token = token or session.get('clio_token', '')
     if not auth_token:
         return {"error": "No Clio authentication token available"}
 
-    # Set up headers
+    # Check if we're in mock mode
+    USE_MOCK_DATA = auth_token == "mock-token-for-testing"
+
+    if USE_MOCK_DATA:
+        print("🧪 Creating mock matter data")
+        mock_matter_id = hashlib.md5(f"matter-{contact_id}-{practice_area}".encode()).hexdigest()[:8]
+
+        mock_matter = {
+            "data": {
+                "id": f"mock-matter-{mock_matter_id}",
+                "type": "matters",
+                "attributes": {
+                    "display_number": f"GHL-{contact_id}",
+                    "description": description or "Lead from GoHighLevel",
+                    "status": "Pending",
+                    "practice_area": practice_area or "General",
+                    "created_at": datetime.now().isoformat(),
+                    "client_id": contact_id
+                }
+            }
+        }
+
+        return {
+            "mock_data": True,
+            "data": mock_matter["data"],
+            "message": "Mock matter created successfully"
+        }
+
+    # Set up headers for real API call
     headers = {
         "Authorization": f"Bearer {auth_token}",
         "Content-Type": "application/json",
         "Accept": "application/json"
     }
 
-    # Use the correct Clio API format - based on their documentation
-    matter_data = {
-        "data": {
-            "type": "Matter",
-            "client": {
-                "id": str(contact_id)
-            },
-            "display_number": f"GHL-{contact_id}",
-            "description": description or "Lead from GoHighLevel",
-            "status": "Pending",
-            "practice_area": practice_area or "General"
+    # Try multiple API formats that Clio accepts
+    api_attempts = [
+        {
+            "name": "Standard Matter Creation",
+            "url": f"{CLIO_API_BASE}/matters",
+            "data": {
+                "data": {
+                    "type": "Matter",
+                    "client": {
+                        "id": str(contact_id)
+                    },
+                    "display_number": f"GHL-{contact_id}",
+                    "description": description or "Lead from GoHighLevel",
+                    "status": "Pending",
+                    "practice_area": practice_area or "General"
+                }
+            }
+        },
+        {
+            "name": "Alternative Format 1",
+            "url": f"{CLIO_API_BASE}/matters",
+            "data": {
+                "data": {
+                    "type": "Matter",
+                    "client_id": str(contact_id),
+                    "display_number": f"GHL-{contact_id}",
+                    "description": description or "Lead from GoHighLevel",
+                    "status": "Pending",
+                    "practice_area": practice_area or "General"
+                }
+            }
+        },
+        {
+            "name": "Contact-specific endpoint",
+            "url": f"{CLIO_API_BASE}/contacts/{contact_id}/matters",
+            "data": {
+                "data": {
+                    "type": "Matter",
+                    "display_number": f"GHL-{contact_id}",
+                    "description": description or "Lead from GoHighLevel",
+                    "status": "Pending",
+                    "practice_area": practice_area or "General"
+                }
+            }
         }
-    }
+    ]
 
-    try:
-        print(f"📤 Creating matter with data: {json.dumps(matter_data, indent=2)}")
+    # Try each API format
+    for attempt in api_attempts:
+        try:
+            print(f"🔄 Trying {attempt['name']}")
+            print(f"📤 URL: {attempt['url']}")
+            print(f"📤 Data: {json.dumps(attempt['data'], indent=2)}")
 
-        response = requests.post(
-            f"{CLIO_API_BASE}/matters",
-            headers=headers,
-            json=matter_data,
-            timeout=20
-        )
-
-        print(f"📥 Matter creation response status: {response.status_code}")
-        print(f"📥 Matter creation response: {response.text}")
-
-        if response.status_code in [200, 201]:
-            print("✅ Successfully created matter in Clio")
-            return response.json()
-        else:
-            # If this format fails, try the alternative endpoint
-            print("🔄 Trying alternative endpoint: /contacts/{id}/matters")
-
-            alternative_response = requests.post(
-                f"{CLIO_API_BASE}/contacts/{contact_id}/matters",
+            response = requests.post(
+                attempt['url'],
                 headers=headers,
-                json={
-                    "data": {
-                        "type": "Matter",
-                        "display_number": f"GHL-{contact_id}",
-                        "description": description or "Lead from GoHighLevel",
-                        "status": "Pending",
-                        "practice_area": practice_area or "General"
-                    }
-                },
-                timeout=20
+                json=attempt['data'],
+                timeout=30
             )
 
-            print(f"📥 Alternative response status: {alternative_response.status_code}")
-            print(f"📥 Alternative response: {alternative_response.text}")
+            print(f"📥 Response status: {response.status_code}")
+            print(f"📥 Response headers: {dict(response.headers)}")
+            print(f"📥 Response body: {response.text}")
 
-            if alternative_response.status_code in [200, 201]:
-                print("✅ Successfully created matter via alternative endpoint")
-                return alternative_response.json()
+            if response.status_code in [200, 201]:
+                print(f"✅ Successfully created matter using {attempt['name']}")
+                result = response.json()
+                return result
+            elif response.status_code == 401:
+                print("🔐 Authentication failed - token may be expired")
+                return {
+                    "error": "Authentication failed - please re-authenticate with Clio",
+                    "status_code": 401
+                }
+            elif response.status_code == 422:
+                print("📝 Validation error - checking response for details")
+                try:
+                    error_details = response.json()
+                    print(f"Validation errors: {error_details}")
+                except:
+                    pass
 
-            return {
-                "error": "Failed to create matter",
-                "main_response": response.text,
-                "alternative_response": alternative_response.text,
-                "contact_id": contact_id
-            }
+        except requests.exceptions.Timeout:
+            print(f"⏰ Timeout for {attempt['name']}")
+            continue
+        except Exception as e:
+            print(f"❌ Exception for {attempt['name']}: {str(e)}")
+            continue
 
-    except Exception as e:
-        print(f"❌ Exception creating matter: {str(e)}")
-        return {"error": f"Exception creating matter: {str(e)}"}
+    # If all attempts failed, return detailed error info
+    return {
+        "error": "Failed to create matter with all attempted formats",
+        "contact_id": contact_id,
+        "practice_area": practice_area,
+        "description_length": len(description) if description else 0,
+        "message": "Check Clio authentication and API permissions"
+    }
+
 # Main entry point
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
