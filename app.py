@@ -955,153 +955,154 @@ def add_test_transaction():
 
 # Clio API Functions
 def create_clio_contact(caller_name, phone, email="", address_data=None):
-        """Create a contact in Clio - FIXED VERSION"""
+    """Create a contact in Clio - FIXED VERSION"""
+    from models import ApiConfig
+    
+    # Split the name properly to satisfy Clio's requirements
+    first_name = ""
+    last_name = ""
 
-        # Split the name properly to satisfy Clio's requirements
-        first_name = ""
-        last_name = ""
+    if caller_name and caller_name.strip():
+        name_parts = caller_name.strip().split()
+        if len(name_parts) == 1:
+            first_name = name_parts[0]
+            last_name = "."  # Clio requires at least one name, use placeholder
+        elif len(name_parts) >= 2:
+            first_name = name_parts[0]
+            last_name = " ".join(name_parts[1:])
+    else:
+        # If no name extracted, use placeholder names
+        first_name = "Unknown"
+        last_name = "Caller"
 
-        if caller_name and caller_name.strip():
-            name_parts = caller_name.strip().split()
-            if len(name_parts) == 1:
-                first_name = name_parts[0]
-                last_name = "."  # Clio requires at least one name, use placeholder
-            elif len(name_parts) >= 2:
-                first_name = name_parts[0]
-                last_name = " ".join(name_parts[1:])
-        else:
-            # If no name extracted, use placeholder names
-            first_name = "Unknown"
-            last_name = "Caller"
+    print(f"📋 Creating contact: {first_name} {last_name}")
 
-        print(f"📋 Creating contact: {first_name} {last_name}")
-
-        # Prepare contact data
-        contact_data = {
-            "data": {
-                "type": "Person",
-                "first_name": first_name,
-                "last_name": last_name
-            }
+    # Prepare contact data
+    contact_data = {
+        "data": {
+            "type": "Person",
+            "first_name": first_name,
+            "last_name": last_name
         }
+    }
 
-        # Add phone if provided
-        if phone:
-            contact_data["data"]["phone_numbers"] = [{
-                "number": phone,
-                "type": "work"
-            }]
+    # Add phone if provided
+    if phone:
+        contact_data["data"]["phone_numbers"] = [{
+            "number": phone,
+            "type": "work"
+        }]
 
-        # Add email if provided
-        if email:
-            contact_data["data"]["email_addresses"] = [{
-                "address": email,
-                "type": "work"
-            }]
+    # Add email if provided
+    if email:
+        contact_data["data"]["email_addresses"] = [{
+            "address": email,
+            "type": "work"
+        }]
 
-        # Add address if provided
-        if address_data:
-            addresses = []
-            address = {"type": "home"}
+    # Add address if provided
+    if address_data:
+        addresses = []
+        address = {"type": "home"}
 
-            if address_data.get("state"):
-                address["state"] = address_data["state"]
-            if address_data.get("country"):
-                address["country"] = address_data["country"]
-            if address_data.get("city"):
-                address["city"] = address_data["city"]
-            if address_data.get("postal_code"):
-                address["postal_code"] = address_data["postal_code"]
+        if address_data.get("state"):
+            address["state"] = address_data["state"]
+        if address_data.get("country"):
+            address["country"] = address_data["country"]
+        if address_data.get("city"):
+            address["city"] = address_data["city"]
+        if address_data.get("postal_code"):
+            address["postal_code"] = address_data["postal_code"]
 
-            if len(address) > 1:  # More than just "type"
-                addresses.append(address)
-                contact_data["data"]["addresses"] = addresses
+        if len(address) > 1:  # More than just "type"
+            addresses.append(address)
+            contact_data["data"]["addresses"] = addresses
 
-        # Get auth token
-        clio_config = ApiConfig.query.filter_by(service='clio').first()
-        if not clio_config or not clio_config.oauth_token:
-            print("❌ No Clio token available")
+    # Get auth token
+    clio_config = ApiConfig.query.filter_by(service='clio').first()
+    if not clio_config or not clio_config.oauth_token:
+        print("❌ No Clio token available")
+        return None
+    
+    token = clio_config.oauth_token
+
+    print("Sending contact creation request to Clio API...")
+    print(f"Request data: {json.dumps(contact_data, indent=2)}")
+
+    try:
+        response = requests.post(
+            "https://app.clio.com/api/v4/contacts",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            },
+            json=contact_data,
+            timeout=30
+        )
+
+        print(f"Response status: {response.status_code}")
+
+        if response.status_code == 201:
+            # Success!
+            contact_info = response.json()
+            print(f"✅ Contact created successfully!")
+            return contact_info
+        else:
+            print(f"Response body: {response.text[:500]}...")
+            print(f"❌ Failed to create contact in Clio API - Status: {response.status_code}")
+
+            # Check if it's a validation error we can fix
+            if response.status_code == 422:
+                try:
+                    error_data = response.json()
+                    print(f"Validation errors: {error_data}")
+
+                    # If name is still the issue, try with different approach
+                    if "name" in str(error_data).lower() or "first" in str(error_data).lower():
+                        print("🔄 Retrying with minimal contact data...")
+
+                        # Try with just phone number and minimal name
+                        minimal_data = {
+                            "data": {
+                                "type": "Person",
+                                "first_name": first_name if first_name else "Unknown",
+                                "last_name": last_name if last_name else "Caller"
+                            }
+                        }
+
+                        if phone:
+                            minimal_data["data"]["phone_numbers"] = [{
+                                "number": phone,
+                                "type": "work"
+                            }]
+
+                        print(f"Minimal request: {json.dumps(minimal_data, indent=2)}")
+
+                        retry_response = requests.post(
+                            "https://app.clio.com/api/v4/contacts",
+                            headers={
+                                "Authorization": f"Bearer {token}",
+                                "Content-Type": "application/json"
+                            },
+                            json=minimal_data,
+                            timeout=30
+                        )
+
+                        if retry_response.status_code == 201:
+                            print("✅ Contact created with minimal data!")
+                            return retry_response.json()
+                        else:
+                            print(f"❌ Retry also failed: {retry_response.status_code}")
+                            print(f"Retry response: {retry_response.text[:200]}...")
+
+                except Exception as e:
+                    print(f"Error parsing validation response: {e}")
+
             return None
-        
-        token = clio_config.oauth_token
 
-        print("Sending contact creation request to Clio API...")
-        print(f"Request data: {json.dumps(contact_data, indent=2)}")
-
-        try:
-            response = requests.post(
-                "https://app.clio.com/api/v4/contacts",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json"
-                },
-                json=contact_data,
-                timeout=30
-            )
-
-            print(f"Response status: {response.status_code}")
-
-            if response.status_code == 201:
-                    # Success!
-                    contact_info = response.json()
-                    print(f"✅ Contact created successfully!")
-                    return contact_info
-                else:
-                    print(f"Response body: {response.text[:500]}...")
-                    print(f"❌ Failed to create contact in Clio API - Status: {response.status_code}")
-
-                    # Check if it's a validation error we can fix
-                    if response.status_code == 422:
-                        try:
-                            error_data = response.json()
-                            print(f"Validation errors: {error_data}")
-
-                            # If name is still the issue, try with different approach
-                            if "name" in str(error_data).lower() or "first" in str(error_data).lower():
-                                print("🔄 Retrying with minimal contact data...")
-
-                                # Try with just phone number and minimal name
-                                minimal_data = {
-                                    "data": {
-                                        "type": "Person",
-                                        "first_name": first_name if first_name else "Unknown",
-                                        "last_name": last_name if last_name else "Caller"
-                                    }
-                                }
-
-                                if phone:
-                                    minimal_data["data"]["phone_numbers"] = [{
-                                        "number": phone,
-                                        "type": "work"
-                                    }]
-
-                                print(f"Minimal request: {json.dumps(minimal_data, indent=2)}")
-
-                                retry_response = requests.post(
-                                    "https://app.clio.com/api/v4/contacts",
-                                    headers={
-                                        "Authorization": f"Bearer {token}",
-                                        "Content-Type": "application/json"
-                                    },
-                                    json=minimal_data,
-                                    timeout=30
-                                )
-
-                                if retry_response.status_code == 201:
-                                    print("✅ Contact created with minimal data!")
-                                    return retry_response.json()
-                                else:
-                                    print(f"❌ Retry also failed: {retry_response.status_code}")
-                                    print(f"Retry response: {retry_response.text[:200]}...")
-
-                        except Exception as e:
-                            print(f"Error parsing validation response: {e}")
-
-                    return None
-
-            except Exception as e:
-                print(f"❌ Exception during contact creation: {e}")
-                return None
+    except Exception as e:
+        print(f"❌ Exception during contact creation: {e}")
+        return None
 
 def create_clio_matter(contact_data, practice_area, description, token=None):
     """Create a matter in Clio using the correct API format with better error handling"""
