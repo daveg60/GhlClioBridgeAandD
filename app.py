@@ -778,11 +778,6 @@ def ghl_webhook():
                 print(f"⚠️ Database error (will use mock data): {str(e)}")
 
         # Enable mock data only if we don't have a real token
-        USE_MOCK_DATA = clio_token is None
-        if USE_MOCK_DATA:
-            print("⚠️ No Clio token found - using mock data for testing")
-            clio_token = "mock-token-for-testing"
-
             if clio_token:
                 # Prepare address data for the new function
                 address_data = {
@@ -796,18 +791,18 @@ def ghl_webhook():
                 # Create matter in Clio
                 matter_data = create_clio_matter(contact_data, practice_area, case_description, token=clio_token)
 
-            return jsonify({
-                "status": "success",
-                "message": "Data forwarded to Clio",
-                "clio_contact": contact_data,
-                "clio_matter": matter_data,
-                "practice_area": practice_area
-            })
-        else:
-            return jsonify({
-                "status": "error",
-                "message": "Not authenticated with Clio"
-            }), 401
+                return jsonify({
+                    "status": "success",
+                    "message": "Data forwarded to Clio",
+                    "clio_contact": contact_data,
+                    "clio_matter": matter_data,
+                    "practice_area": practice_area
+                })
+            else:
+                return jsonify({
+                    "status": "error",
+                    "message": "Not authenticated with Clio"
+                }), 401
 
     except Exception as e:
         print(f"❌ Error processing webhook: {str(e)}")
@@ -954,10 +949,37 @@ def add_test_transaction():
         }), 500
 
 # Clio API Functions
+def get_clio_token():
+    """Get Clio token from session or database"""
+    # Try session first
+    if 'clio_token' in session:
+        return session['clio_token']
+
+    # Try database
+    try:
+        import psycopg2
+        db_url = os.environ.get("DATABASE_URL")
+        conn = psycopg2.connect(db_url)
+        cursor = conn.cursor()
+        cursor.execute("SELECT oauth_token FROM api_configs WHERE service = 'clio' AND oauth_token IS NOT NULL")
+        result = cursor.fetchone()
+        if result and result[0]:
+            token = result[0]
+            # Store in session for future use
+            session['clio_token'] = token
+            cursor.close()
+            conn.close()
+            return token
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error getting Clio token: {e}")
+
+    return None
+
 def create_clio_contact(caller_name, phone, email="", address_data=None):
     """Create a contact in Clio - FIXED VERSION"""
-    from models import ApiConfig
-    
+
     # Split the name properly to satisfy Clio's requirements
     first_name = ""
     last_name = ""
@@ -1018,13 +1040,11 @@ def create_clio_contact(caller_name, phone, email="", address_data=None):
             addresses.append(address)
             contact_data["data"]["addresses"] = addresses
 
-    # Get auth token
-    clio_config = ApiConfig.query.filter_by(service='clio').first()
-    if not clio_config or not clio_config.oauth_token:
+    # Get auth token using our helper function
+    token = get_clio_token()
+    if not token:
         print("❌ No Clio token available")
         return None
-    
-    token = clio_config.oauth_token
 
     print("Sending contact creation request to Clio API...")
     print(f"Request data: {json.dumps(contact_data, indent=2)}")
@@ -1103,7 +1123,6 @@ def create_clio_contact(caller_name, phone, email="", address_data=None):
     except Exception as e:
         print(f"❌ Exception during contact creation: {e}")
         return None
-
 def create_clio_matter(contact_data, practice_area, description, token=None):
     """Create a matter in Clio using the correct API format with better error handling"""
     import requests
