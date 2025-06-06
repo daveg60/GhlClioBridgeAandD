@@ -992,54 +992,56 @@ def create_clio_contact(caller_name, phone, email="", address_data=None):
                 "type": "work"
             }]
 
-            # Add email if provided
-            if email:
-                contact_data["data"]["email_addresses"] = [{
-                    "address": email,
-                    "type": "work"
-                }]
+        # Add email if provided
+        if email:
+            contact_data["data"]["email_addresses"] = [{
+                "address": email,
+                "type": "work"
+            }]
 
-            # Add address if provided
-            if address_data:
-                addresses = []
-                address = {"type": "home"}
+        # Add address if provided
+        if address_data:
+            addresses = []
+            address = {"type": "home"}
 
-                if address_data.get("state"):
-                    address["state"] = address_data["state"]
-                if address_data.get("country"):
-                    address["country"] = address_data["country"]
-                if address_data.get("city"):
-                    address["city"] = address_data["city"]
-                if address_data.get("postal_code"):
-                    address["postal_code"] = address_data["postal_code"]
+            if address_data.get("state"):
+                address["state"] = address_data["state"]
+            if address_data.get("country"):
+                address["country"] = address_data["country"]
+            if address_data.get("city"):
+                address["city"] = address_data["city"]
+            if address_data.get("postal_code"):
+                address["postal_code"] = address_data["postal_code"]
 
-                if len(address) > 1:  # More than just "type"
-                    addresses.append(address)
-                    contact_data["data"]["addresses"] = addresses
+            if len(address) > 1:  # More than just "type"
+                addresses.append(address)
+                contact_data["data"]["addresses"] = addresses
 
-            # Get auth token
-            token = get_clio_token()
-            if not token:
-                print("❌ No Clio token available")
-                return None
+        # Get auth token
+        clio_config = ApiConfig.query.filter_by(service='clio').first()
+        if not clio_config or not clio_config.oauth_token:
+            print("❌ No Clio token available")
+            return None
+        
+        token = clio_config.oauth_token
 
-            print("Sending contact creation request to Clio API...")
-            print(f"Request data: {json.dumps(contact_data, indent=2)}")
+        print("Sending contact creation request to Clio API...")
+        print(f"Request data: {json.dumps(contact_data, indent=2)}")
 
-            try:
-                response = requests.post(
-                    "https://app.clio.com/api/v4/contacts",
-                    headers={
-                        "Authorization": f"Bearer {token}",
-                        "Content-Type": "application/json"
-                    },
-                    json=contact_data,
-                    timeout=30
-                )
+        try:
+            response = requests.post(
+                "https://app.clio.com/api/v4/contacts",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json"
+                },
+                json=contact_data,
+                timeout=30
+            )
 
-                print(f"Response status: {response.status_code}")
+            print(f"Response status: {response.status_code}")
 
-                if response.status_code == 201:
+            if response.status_code == 201:
                     # Success!
                     contact_info = response.json()
                     print(f"✅ Contact created successfully!")
