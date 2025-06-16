@@ -701,6 +701,7 @@ def ghl_webhook():
             if "customData" in data:
                 print("CustomData keys:", list(data["customData"].keys()) if isinstance(data["customData"], dict) else "Not a dict")
         print("=" * 80)
+
         # CHECK FOR REJECTION FIRST - before any processing
         should_create, reason = should_create_matter(transcription)
         if not should_create:
@@ -753,61 +754,44 @@ def ghl_webhook():
         practice_area = extract_practice_area(case_description)
         print(f"📋 Detected practice area: {practice_area}")
 
-        # Get the real Clio token from session or database
-        clio_token = None
+        # Get the real Clio token from session or database  
+        clio_token = get_clio_token()
 
-        # Try to get token from session first
-        if 'clio_token' in session:
-            clio_token = session['clio_token']
-            print("✅ Using Clio token from session")
+        if clio_token:
+            print("✅ Using Clio token for both contact and matter creation")
         else:
-            # Then try to get token from database
-            try:
-                import psycopg2
-                db_url = os.environ.get("DATABASE_URL")
-                conn = psycopg2.connect(db_url, connect_timeout=5)
-                cursor = conn.cursor()
-                cursor.execute("SELECT oauth_token FROM api_configs WHERE service = 'clio' AND oauth_token IS NOT NULL LIMIT 1")
-                result = cursor.fetchone()
-                if result and result[0]:
-                    clio_token = result[0]
-                    print("✅ Using Clio token from database")
-                cursor.close()
-                conn.close()
-            except Exception as e:
-                print(f"⚠️ Database error (will use mock data): {str(e)}")
+            print("❌ No Clio token available")
 
-        # Enable mock data only if we don't have a real token
-            if clio_token:
-                # Prepare address data for the new function
-                address_data = {
-                    "state": state,
-                    "country": "US"
-                }
+        # Create contact and matter if we have a token
+        if clio_token:
+            # Prepare address data for the new function
+            address_data = {
+                "state": state,
+                "country": "US"
+            }
 
-                # Create contact in Clio
-                contact_data = create_clio_contact(full_name, phone, email, address_data)
+            # Create contact in Clio
+            contact_data = create_clio_contact(full_name, phone, email, address_data, token=clio_token)
 
-                # Create matter in Clio
-                matter_data = create_clio_matter(contact_data, practice_area, case_description, token=clio_token)
+            # Create matter in Clio (same token guaranteed)
+            matter_data = create_clio_matter(contact_data, practice_area, case_description, token=clio_token)
 
-                return jsonify({
-                    "status": "success",
-                    "message": "Data forwarded to Clio",
-                    "clio_contact": contact_data,
-                    "clio_matter": matter_data,
-                    "practice_area": practice_area
-                })
-            else:
-                return jsonify({
-                    "status": "error",
-                    "message": "Not authenticated with Clio"
-                }), 401
+            return jsonify({
+                "status": "success",
+                "message": "Data forwarded to Clio",
+                "clio_contact": contact_data,
+                "clio_matter": matter_data,
+                "practice_area": practice_area
+            })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Not authenticated with Clio"
+            }), 401
 
     except Exception as e:
         print(f"❌ Error processing webhook: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
-
 @app.route('/api/clio-webhook', methods=['POST'])
 def clio_webhook():
     """Handle webhook from Clio (for future use)"""
@@ -977,8 +961,8 @@ def get_clio_token():
 
     return None
 
-def create_clio_contact(caller_name, phone, email="", address_data=None):
-    """Create a contact in Clio - FIXED VERSION"""
+def create_clio_contact(caller_name, phone, email="", address_data=None, token=None):
+    """Create a contact in Clio - FIXED VERSION with consistent token usage"""
 
     # Split the name properly to satisfy Clio's requirements
     first_name = ""
@@ -1040,9 +1024,9 @@ def create_clio_contact(caller_name, phone, email="", address_data=None):
             addresses.append(address)
             contact_data["data"]["addresses"] = addresses
 
-    # Get auth token using our helper function
-    token = get_clio_token()
-    if not token:
+    # Use the token passed to us, or get one if none provided
+    auth_token = token or get_clio_token()
+    if not auth_token:
         print("❌ No Clio token available")
         return None
 
@@ -1053,7 +1037,7 @@ def create_clio_contact(caller_name, phone, email="", address_data=None):
         response = requests.post(
             "https://app.clio.com/api/v4/contacts",
             headers={
-                "Authorization": f"Bearer {token}",
+                "Authorization": f"Bearer {auth_token}",
                 "Content-Type": "application/json"
             },
             json=contact_data,
@@ -1101,7 +1085,7 @@ def create_clio_contact(caller_name, phone, email="", address_data=None):
                         retry_response = requests.post(
                             "https://app.clio.com/api/v4/contacts",
                             headers={
-                                "Authorization": f"Bearer {token}",
+                                "Authorization": f"Bearer {auth_token}",
                                 "Content-Type": "application/json"
                             },
                             json=minimal_data,
