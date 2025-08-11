@@ -154,6 +154,87 @@ def test_clio_credentials():
             "message": f"Error testing credentials: {str(e)}"
         }), 500
 
+@app.route('/api/test-create-contact')
+def test_create_contact():
+    """Test creating a real contact in Clio (requires authentication)"""
+    try:
+        # Check if authenticated
+        clio_token = session.get('clio_token')
+        if not clio_token:
+            # Try to get from database
+            try:
+                import psycopg2
+                db_url = os.environ.get("DATABASE_URL")
+                conn = psycopg2.connect(db_url)
+                cursor = conn.cursor()
+                cursor.execute("SELECT oauth_token FROM api_configs WHERE service = 'clio' AND oauth_token IS NOT NULL")
+                result = cursor.fetchone()
+                if result and result[0]:
+                    clio_token = result[0]
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+        
+        if not clio_token:
+            return jsonify({
+                "status": "error",
+                "message": "Not authenticated with Clio. Please visit /authorize first.",
+                "auth_url": f"/authorize"
+            }), 401
+        
+        # Create test contact data
+        test_contact = {
+            "data": {
+                "type": "Person",
+                "first_name": "Test",
+                "last_name": "Contact",
+                "phone_numbers": [{
+                    "number": "+1-555-123-4567",
+                    "type": "work"
+                }],
+                "email_addresses": [{
+                    "address": "test@example.com",
+                    "type": "work"
+                }]
+            }
+        }
+        
+        # Make API call to Clio
+        headers = {
+            "Authorization": f"Bearer {clio_token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+        
+        response = requests.post(
+            f"{CLIO_API_BASE}/contacts",
+            headers=headers,
+            json=test_contact,
+            timeout=30
+        )
+        
+        if response.status_code == 201:
+            contact_data = response.json()
+            return jsonify({
+                "status": "success",
+                "message": "Test contact created successfully in Clio!",
+                "contact_id": contact_data.get("data", {}).get("id"),
+                "contact_name": f"{test_contact['data']['first_name']} {test_contact['data']['last_name']}"
+            })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": f"Failed to create contact. Status: {response.status_code}",
+                "response": response.text
+            }), response.status_code
+            
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Error testing contact creation: {str(e)}"
+        }), 500
+
 @app.route('/authorize')
 def authorize():
     """Redirect to Clio authorization"""
