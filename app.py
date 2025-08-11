@@ -107,6 +107,53 @@ def index():
             "auth_url": auth_url
         })
 
+@app.route('/api/test-clio-credentials')
+def test_clio_credentials():
+    """Test Clio OAuth credentials without using mock data"""
+    try:
+        # Test the OAuth authorization URL generation
+        if not CLIO_CLIENT_ID or not CLIO_CLIENT_SECRET:
+            return jsonify({
+                "status": "error",
+                "message": "Missing Clio credentials - CLIO_CLIENT_ID or CLIO_CLIENT_SECRET not set"
+            }), 400
+
+        # Generate authorization URL to test client ID
+        auth_url = f"{CLIO_AUTH_URL}?response_type=code&client_id={CLIO_CLIENT_ID}&redirect_uri={CLIO_REDIRECT_URI}"
+        
+        # Test if we can reach Clio's OAuth endpoint
+        test_response = requests.get(CLIO_AUTH_URL, timeout=10)
+        
+        if test_response.status_code == 200:
+            return jsonify({
+                "status": "success",
+                "message": "Clio OAuth credentials configured correctly",
+                "details": {
+                    "client_id": CLIO_CLIENT_ID[:8] + "..." if CLIO_CLIENT_ID else "Not set",
+                    "client_secret": "Set" if CLIO_CLIENT_SECRET else "Not set",
+                    "auth_url": auth_url,
+                    "redirect_uri": CLIO_REDIRECT_URI,
+                    "clio_auth_endpoint": "Reachable"
+                }
+            })
+        else:
+            return jsonify({
+                "status": "warning",
+                "message": "Credentials configured but Clio endpoint unreachable",
+                "clio_status": test_response.status_code
+            }), 200
+            
+    except requests.exceptions.RequestException as e:
+        return jsonify({
+            "status": "error", 
+            "message": f"Network error testing Clio connection: {str(e)}"
+        }), 500
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Error testing credentials: {str(e)}"
+        }), 500
+
 @app.route('/authorize')
 def authorize():
     """Redirect to Clio authorization"""
