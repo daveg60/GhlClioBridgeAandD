@@ -156,31 +156,16 @@ def test_clio_credentials():
 
 @app.route('/api/test-create-contact')
 def test_create_contact():
-    """Test creating a real contact in Clio (requires authentication)"""
+    """Test creating a real contact in Clio using API key authentication"""
     try:
-        # Check if authenticated
-        clio_token = session.get('clio_token')
-        if not clio_token:
-            # Try to get from database
-            try:
-                import psycopg2
-                db_url = os.environ.get("DATABASE_URL")
-                conn = psycopg2.connect(db_url)
-                cursor = conn.cursor()
-                cursor.execute("SELECT oauth_token FROM api_configs WHERE service = 'clio' AND oauth_token IS NOT NULL")
-                result = cursor.fetchone()
-                if result and result[0]:
-                    clio_token = result[0]
-                cursor.close()
-                conn.close()
-            except Exception:
-                pass
+        # Check for Clio API key first (simpler than OAuth)
+        clio_api_key = os.environ.get('CLIO_API_KEY')
         
-        if not clio_token:
+        if not clio_api_key:
             return jsonify({
                 "status": "error",
-                "message": "Not authenticated with Clio. Please visit /authorize first.",
-                "auth_url": f"/authorize"
+                "message": "Clio API key not configured. Please set CLIO_API_KEY environment variable.",
+                "instructions": "Ask the Clio user to generate an API key from their Clio account settings and provide it to you."
             }), 401
         
         # Create test contact data
