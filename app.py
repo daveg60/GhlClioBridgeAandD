@@ -158,14 +158,61 @@ def test_clio_credentials():
 def test_create_contact():
     """Test creating a real contact in Clio using API key authentication"""
     try:
-        # Check for Clio API key first (simpler than OAuth)
-        clio_api_key = os.environ.get('CLIO_API_KEY')
+        # Try multiple authentication methods
+        auth_header = None
+        auth_method = None
         
-        if not clio_api_key:
+        # Method 1: Check for OAuth token
+        clio_token = session.get('clio_token')
+        if not clio_token:
+            try:
+                import psycopg2
+                db_url = os.environ.get("DATABASE_URL")
+                conn = psycopg2.connect(db_url)
+                cursor = conn.cursor()
+                cursor.execute("SELECT oauth_token FROM api_configs WHERE service = 'clio' AND oauth_token IS NOT NULL")
+                result = cursor.fetchone()
+                if result and result[0]:
+                    clio_token = result[0]
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+        
+        if clio_token:
+            auth_header = f"Bearer {clio_token}"
+            auth_method = "OAuth Token"
+        
+        # Method 2: Check for API key
+        elif os.environ.get('CLIO_API_KEY'):
+            auth_header = f"Bearer {os.environ.get('CLIO_API_KEY')}"
+            auth_method = "API Key"
+        
+        # Method 3: Use Client Credentials flow (if supported)
+        elif CLIO_CLIENT_ID and CLIO_CLIENT_SECRET:
+            try:
+                # Try client credentials grant
+                token_data = {
+                    'grant_type': 'client_credentials',
+                    'client_id': CLIO_CLIENT_ID,
+                    'client_secret': CLIO_CLIENT_SECRET
+                }
+                token_response = requests.post(CLIO_TOKEN_URL, data=token_data, timeout=10)
+                if token_response.status_code == 200:
+                    token_info = token_response.json()
+                    access_token = token_info.get('access_token')
+                    if access_token:
+                        auth_header = f"Bearer {access_token}"
+                        auth_method = "Client Credentials"
+            except Exception as e:
+                pass
+        
+        if not auth_header:
             return jsonify({
                 "status": "error",
-                "message": "Clio API key not configured. Please set CLIO_API_KEY environment variable.",
-                "instructions": "Ask the Clio user to generate an API key from their Clio account settings and provide it to you."
+                "message": "No valid Clio authentication available",
+                "tried_methods": ["OAuth token (from session/database)", "API key", "Client credentials"],
+                "solution": "Need either: 1) Complete OAuth authorization, 2) Provide CLIO_API_KEY, or 3) Use different Clio auth method"
             }), 401
         
         # Create test contact data
