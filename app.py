@@ -560,6 +560,21 @@ def ghl_webhook():
             # Create matter in Clio
             matter_data = create_clio_matter(contact_data, practice_area, final_case_description, token=clio_token)
 
+            # Log successful completion
+            try:
+                db_url = os.environ.get("DATABASE_URL")
+                conn = psycopg2.connect(db_url)
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO error_logs (error_type, error_message, transaction_id, created_at)
+                    VALUES (%s, %s, %s, NOW())
+                """, ('WEBHOOK_SUCCESS', f"Successfully created contact: {contact_data} and matter: {matter_data}", 'webhook_success'))
+                conn.commit()
+                cursor.close()
+                conn.close()
+            except Exception as log_error:
+                print(f"Failed to log success to database: {log_error}")
+
             return jsonify({
                 "status": "success",
                 "message": "Data forwarded to Clio",
