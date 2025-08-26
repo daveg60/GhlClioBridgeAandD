@@ -343,6 +343,7 @@ def ghl_webhook():
     try:
         data = request.json
         print("✅ Incoming webhook data from GHL:", data)
+        print(f"🔍 Debug - Extracted names: first='{first_name}', last='{last_name}', full='{full_name}'")
 
         # Extract relevant data with multiple fallback methods
         full_name = data.get("full_name", "")
