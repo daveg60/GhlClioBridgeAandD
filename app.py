@@ -401,8 +401,11 @@ def ghl_webhook():
         # Check for transcription
         transcription = data.get("transcription", "")
 
-        # Extract practice area
-        practice_area = extract_practice_area(case_description or transcription)
+        # Use transcription as primary case description if available, fallback to case_description
+        final_case_description = transcription if transcription else case_description
+
+        # Extract practice area from transcription first, then case_description
+        practice_area = extract_practice_area(transcription or case_description)
 
         # Get the real Clio token from session or database
         clio_token = None
@@ -440,7 +443,7 @@ def ghl_webhook():
             contact_data = create_clio_contact(full_name, email, phone, state, token=clio_token)
 
             # Create matter in Clio
-            matter_data = create_clio_matter(contact_data, practice_area, case_description, token=clio_token)
+            matter_data = create_clio_matter(contact_data, practice_area, final_case_description, token=clio_token)
 
             return jsonify({
                 "status": "success",
