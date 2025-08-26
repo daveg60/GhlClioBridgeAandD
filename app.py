@@ -664,41 +664,12 @@ def create_clio_contact(full_name, email, phone, state=None, token=None):
             print("Successfully created contact in Clio")
             return response.json()
         else:
-            print("Failed to create contact - using mock data for development")
-
-            # Create a unique hash-based ID for consistent mock data
-            mock_id = hashlib.md5(f"{full_name}:{email}".encode()).hexdigest()[:8]
-
-            # Return mock data with the expected structure
-            mock_contact = {
-                "data": {
-                    "id": f"mock-{mock_id}",
-                    "type": "contacts",
-                    "attributes": {
-                        "name": full_name,
-                        "first_name": first_name,
-                        "last_name": last_name,
-                        "created_at": datetime.now().isoformat(),
-                        "email_addresses": [
-                            {
-                                "address": email,
-                                "type": "work"
-                            }
-                        ] if email else [],
-                        "phone_numbers": [
-                            {
-                                "number": phone,
-                                "type": "work"
-                            }
-                        ] if phone else []
-                    }
-                }
-            }
-
+            print(f"❌ Failed to create contact in Clio. Status: {response.status_code}")
+            print(f"❌ Response: {response.text}")
             return {
-                "error": "Failed to create contact in Clio API",
-                "mock_data": mock_contact,
-                "data": mock_contact["data"]  # For compatibility with successful responses
+                "error": f"Failed to create contact in Clio API. Status: {response.status_code}",
+                "response_body": response.text,
+                "request_data": contact_data
             }
 
     except Exception as e:
