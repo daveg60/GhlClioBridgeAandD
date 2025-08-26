@@ -407,6 +407,7 @@ def clio_callback():
 def debug_logs():
     """View recent webhook debug logs"""
     try:
+        import psycopg2
         db_url = os.environ.get("DATABASE_URL")
         conn = psycopg2.connect(db_url)
         cursor = conn.cursor()
