@@ -603,6 +603,16 @@ def ping():
     """Simple health check endpoint"""
     return jsonify({"status": "ok", "message": "Service is running"}), 200
 
+@app.route('/version', methods=['GET'])
+def version():
+    """Check which version of the code is running"""
+    return jsonify({
+        "status": "ok", 
+        "version": "2025-08-26-v2", 
+        "logging_enabled": True,
+        "psycopg2_available": "psycopg2" in globals()
+    }), 200
+
 
 @app.route('/api/logs', methods=['GET'])
 def view_logs():
