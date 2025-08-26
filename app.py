@@ -407,6 +407,23 @@ def clio_callback():
 @app.route('/debug-logs')
 def debug_logs():
     """View recent webhook debug logs"""
+    html = "<h2>Recent Webhook Debug Logs</h2>"
+    
+    # Try file logs first (more reliable)
+    try:
+        if os.path.exists('webhook_logs.txt'):
+            with open('webhook_logs.txt', 'r') as f:
+                file_content = f.read()
+            if file_content.strip():
+                html += "<h3>File Logs:</h3><pre>" + file_content[-5000:] + "</pre><hr>"
+            else:
+                html += "<p>File exists but no webhook data logged yet.</p><hr>"
+        else:
+            html += "<p>No webhook log file found yet.</p><hr>"
+    except Exception as e:
+        html += f"<p>Error reading file logs: {e}</p><hr>"
+    
+    # Also try database logs
     try:
         db_url = os.environ.get("DATABASE_URL")
         conn = psycopg2.connect(db_url)
@@ -422,16 +439,17 @@ def debug_logs():
         cursor.close()
         conn.close()
         
-        html = "<h2>Recent Webhook Debug Logs</h2>"
+        html += "<h3>Database Logs:</h3>"
         if logs:
             for log in logs:
                 html += f"<div><strong>{log[0]}:</strong><br><pre>{log[1]}</pre><hr></div>"
         else:
-            html += "<p>No debug logs found.</p>"
-        
-        return html
+            html += "<p>No database debug logs found.</p>"
+            
     except Exception as e:
-        return f"Error retrieving logs: {e}"
+        html += f"<p>Error retrieving database logs: {e}</p>"
+    
+    return html
 
 @app.route('/api/ghl-webhook', methods=['POST'])
 def ghl_webhook():
@@ -442,7 +460,7 @@ def ghl_webhook():
         print(f"🔍 Transcription field: '{data.get('transcription', 'NOT FOUND')}'")
         print(f"🔍 CustomData: {data.get('customData', 'NOT FOUND')}")
         
-        # Log to database for debugging since console logs aren't visible in production
+        # Log to database AND file for debugging since console logs aren't visible in production
         try:
             db_url = os.environ.get("DATABASE_URL")
             conn = psycopg2.connect(db_url)
@@ -456,6 +474,19 @@ def ghl_webhook():
             conn.close()
         except Exception as log_error:
             print(f"Failed to log to database: {log_error}")
+        
+        # ALSO log to file as backup
+        try:
+            import datetime
+            timestamp = datetime.datetime.now().isoformat()
+            with open('webhook_logs.txt', 'a') as f:
+                f.write(f"\n=== WEBHOOK {timestamp} ===\n")
+                f.write(f"Data: {json.dumps(data, indent=2)}\n")
+                f.write(f"Transcription: {data.get('transcription', 'NOT FOUND')}\n")
+                f.write(f"CustomData: {data.get('customData', 'NOT FOUND')}\n")
+                f.write("=" * 50 + "\n")
+        except Exception as file_log_error:
+            print(f"Failed to log to file: {file_log_error}")
 
         # Extract relevant data with multiple fallback methods
         full_name = data.get("full_name", "")
