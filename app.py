@@ -409,6 +409,8 @@ def ghl_webhook():
     try:
         data = request.json
         print("✅ Incoming webhook data from GHL:", data)
+        print(f"🔍 Transcription field: '{data.get('transcription', 'NOT FOUND')}'")
+        print(f"🔍 CustomData: {data.get('customData', 'NOT FOUND')}")
 
         # Extract relevant data with multiple fallback methods
         full_name = data.get("full_name", "")
