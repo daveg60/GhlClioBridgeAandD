@@ -343,7 +343,6 @@ def ghl_webhook():
     try:
         data = request.json
         print("✅ Incoming webhook data from GHL:", data)
-        print(f"🔍 Debug - Extracted names: first='{first_name}', last='{last_name}', full='{full_name}'")
 
         # Extract relevant data with multiple fallback methods
         full_name = data.get("full_name", "")
@@ -385,6 +384,8 @@ def ghl_webhook():
             name_parts = full_name.split(' ', 1)
             first_name = name_parts[0] if name_parts else ""
             last_name = name_parts[1] if len(name_parts) > 1 else ""
+            
+        print(f"🔍 Debug - Final extracted names: first='{first_name}', last='{last_name}', full='{full_name}'")
 
         # Try to extract case description from customData
         if "customData" in data and isinstance(data["customData"], dict):
