@@ -12,7 +12,7 @@ app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(16))
 # Configuration
 CLIO_CLIENT_ID = os.environ.get('CLIO_CLIENT_ID')
 CLIO_CLIENT_SECRET = os.environ.get('CLIO_CLIENT_SECRET')
-CLIO_REDIRECT_URI = 'https://5e86d6d8-28eb-409f-9660-4664fc234315-00-3mg3krliahhk6.worf.replit.dev/api/clio-callback'
+CLIO_REDIRECT_URI = 'https://ghl-clio-bridge-LawLeaders.replit.app/api/clio-callback'
 CLIO_AUTH_URL = 'https://app.clio.com/oauth/authorize'
 CLIO_TOKEN_URL = 'https://app.clio.com/oauth/token'
 CLIO_API_BASE = 'https://app.clio.com/api/v4'
