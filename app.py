@@ -403,6 +403,35 @@ def clio_callback():
 
     return redirect(url_for('index'))
 
+@app.route('/debug-logs')
+def debug_logs():
+    """View recent webhook debug logs"""
+    try:
+        db_url = os.environ.get("DATABASE_URL")
+        conn = psycopg2.connect(db_url)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT created_at, error_message 
+            FROM error_logs 
+            WHERE error_type = 'DEBUG_WEBHOOK' 
+            ORDER BY created_at DESC 
+            LIMIT 10
+        """)
+        logs = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        html = "<h2>Recent Webhook Debug Logs</h2>"
+        if logs:
+            for log in logs:
+                html += f"<div><strong>{log[0]}:</strong><br><pre>{log[1]}</pre><hr></div>"
+        else:
+            html += "<p>No debug logs found.</p>"
+        
+        return html
+    except Exception as e:
+        return f"Error retrieving logs: {e}"
+
 @app.route('/api/ghl-webhook', methods=['POST'])
 def ghl_webhook():
     """Handle webhook from GoHighLevel"""
@@ -411,6 +440,21 @@ def ghl_webhook():
         print("✅ Incoming webhook data from GHL:", data)
         print(f"🔍 Transcription field: '{data.get('transcription', 'NOT FOUND')}'")
         print(f"🔍 CustomData: {data.get('customData', 'NOT FOUND')}")
+        
+        # Log to database for debugging since console logs aren't visible in production
+        try:
+            db_url = os.environ.get("DATABASE_URL")
+            conn = psycopg2.connect(db_url)
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO error_logs (error_type, error_message, transaction_id, created_at)
+                VALUES (%s, %s, %s, NOW())
+            """, ('DEBUG_WEBHOOK', f"Received webhook data: {str(data)}", 'webhook_debug'))
+            conn.commit()
+            cursor.close()
+            conn.close()
+        except Exception as log_error:
+            print(f"Failed to log to database: {log_error}")
 
         # Extract relevant data with multiple fallback methods
         full_name = data.get("full_name", "")
