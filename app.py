@@ -351,6 +351,19 @@ def ghl_webhook():
         phone = data.get("phone", "")
         case_description = ""
         state = data.get("state", "")
+        
+        # Try to extract from GHL contact object structure
+        if "contact" in data and isinstance(data["contact"], dict):
+            contact_obj = data["contact"]
+            if not full_name:
+                first_name = contact_obj.get("first_name", "")
+                last_name = contact_obj.get("last_name", "") 
+                if first_name or last_name:
+                    full_name = f"{first_name} {last_name}".strip()
+            if not email:
+                email = contact_obj.get("email", "")
+            if not phone:
+                phone = contact_obj.get("phone", "")
 
         # Try to extract case description from customData
         if "customData" in data and isinstance(data["customData"], dict):
@@ -394,11 +407,11 @@ def ghl_webhook():
             except Exception as e:
                 print(f"⚠️ Database error (will use mock data): {str(e)}")
                 
-        # Enable mock data only if we don't have a real token
-        USE_MOCK_DATA = clio_token is None
-        if USE_MOCK_DATA:
-            print("⚠️ No Clio token found - using mock data for testing")
-            clio_token = "mock-token-for-testing"
+        # Debug token status
+        if clio_token:
+            print(f"✅ Found Clio token: {clio_token[:20]}...")
+        else:
+            print("❌ No Clio token found - this will cause API failures")
         
         if clio_token:
             # Create contact in Clio and pass the token
