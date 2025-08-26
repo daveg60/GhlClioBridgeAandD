@@ -344,9 +344,10 @@ def ghl_webhook():
         data = request.json
         print("✅ Incoming webhook data from GHL:", data)
 
-        # Extract relevant data
-        # This will depend on the actual structure of your GHL webhook data
+        # Extract relevant data with multiple fallback methods
         full_name = data.get("full_name", "")
+        first_name = data.get("first_name", "")
+        last_name = data.get("last_name", "")
         email = data.get("email", "")
         phone = data.get("phone", "")
         case_description = ""
@@ -355,15 +356,34 @@ def ghl_webhook():
         # Try to extract from GHL contact object structure
         if "contact" in data and isinstance(data["contact"], dict):
             contact_obj = data["contact"]
-            if not full_name:
+            if not first_name:
                 first_name = contact_obj.get("first_name", "")
-                last_name = contact_obj.get("last_name", "") 
-                if first_name or last_name:
-                    full_name = f"{first_name} {last_name}".strip()
+            if not last_name:
+                last_name = contact_obj.get("last_name", "")
+            if not full_name and (first_name or last_name):
+                full_name = f"{first_name} {last_name}".strip()
             if not email:
                 email = contact_obj.get("email", "")
             if not phone:
                 phone = contact_obj.get("phone", "")
+        
+        # Try to extract from other common webhook structures
+        if "firstName" in data and not first_name:
+            first_name = data.get("firstName", "")
+        if "lastName" in data and not last_name:
+            last_name = data.get("lastName", "")
+        if "name" in data and not full_name:
+            full_name = data.get("name", "")
+            
+        # Build full_name if we have parts but not the whole
+        if not full_name and (first_name or last_name):
+            full_name = f"{first_name} {last_name}".strip()
+            
+        # Extract first/last from full_name if we only have that
+        if full_name and not first_name and not last_name:
+            name_parts = full_name.split(' ', 1)
+            first_name = name_parts[0] if name_parts else ""
+            last_name = name_parts[1] if len(name_parts) > 1 else ""
 
         # Try to extract case description from customData
         if "customData" in data and isinstance(data["customData"], dict):
