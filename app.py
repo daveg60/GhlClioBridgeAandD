@@ -64,6 +64,72 @@ def extract_practice_area(description):
     # If no match is found, return "Other"
     return "Other"
 
+def parse_transcription_to_case_summary(transcription):
+    """Parse transcription to extract key case details without full conversation"""
+    if not transcription:
+        return ""
+    
+    # Look for key legal phrases and extract relevant details
+    summary_parts = []
+    transcription_lower = transcription.lower()
+    
+    # Extract incident details
+    if "accident" in transcription_lower:
+        summary_parts.append("Incident: Motor vehicle accident")
+    elif "slip" in transcription_lower and "fall" in transcription_lower:
+        summary_parts.append("Incident: Slip and fall")
+    elif "divorce" in transcription_lower:
+        summary_parts.append("Matter: Divorce proceedings")
+    elif "custody" in transcription_lower:
+        summary_parts.append("Matter: Child custody")
+    elif "arrest" in transcription_lower or "charge" in transcription_lower:
+        summary_parts.append("Matter: Criminal charges")
+    elif "will" in transcription_lower or "estate" in transcription_lower:
+        summary_parts.append("Matter: Estate planning")
+    
+    # Extract injury details
+    injuries = []
+    if "injury" in transcription_lower or "injured" in transcription_lower:
+        if "back" in transcription_lower:
+            injuries.append("back injury")
+        if "neck" in transcription_lower or "whiplash" in transcription_lower:
+            injuries.append("neck/whiplash")
+        if "broken" in transcription_lower or "fracture" in transcription_lower:
+            injuries.append("fracture")
+        if "head" in transcription_lower:
+            injuries.append("head injury")
+    
+    if injuries:
+        summary_parts.append(f"Injuries: {', '.join(injuries)}")
+    
+    # Extract timeframe
+    import re
+    time_patterns = [
+        r"(\d+)\s+(day|week|month|year)s?\s+ago",
+        r"last\s+(week|month|year)",
+        r"yesterday",
+        r"today"
+    ]
+    
+    for pattern in time_patterns:
+        match = re.search(pattern, transcription_lower)
+        if match:
+            summary_parts.append(f"Timeframe: {match.group(0)}")
+            break
+    
+    # Extract if seeking specific outcomes
+    if "compensation" in transcription_lower or "damages" in transcription_lower:
+        summary_parts.append("Seeking: Compensation/damages")
+    elif "medical" in transcription_lower and "bill" in transcription_lower:
+        summary_parts.append("Seeking: Medical bill coverage")
+    
+    # Join all parts or return truncated transcription
+    if summary_parts:
+        return " | ".join(summary_parts)
+    else:
+        # Fallback: return first 200 characters of transcription
+        return transcription[:200] + "..." if len(transcription) > 200 else transcription
+
 # Routes
 @app.route('/')
 def index():
@@ -401,8 +467,11 @@ def ghl_webhook():
         # Check for transcription
         transcription = data.get("transcription", "")
 
-        # Use transcription as primary case description if available, fallback to case_description
-        final_case_description = transcription if transcription else case_description
+        # Parse transcription into structured case summary
+        if transcription:
+            final_case_description = parse_transcription_to_case_summary(transcription)
+        else:
+            final_case_description = case_description
 
         # Extract practice area from transcription first, then case_description
         practice_area = extract_practice_area(transcription or case_description)
