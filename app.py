@@ -27,6 +27,65 @@ def requires_auth(f):
         return f(*args, **kwargs)
     return decorated
 
+def refresh_clio_token():
+    """Automatically refresh expired Clio OAuth token"""
+    try:
+        # Get refresh token from database
+        db_url = os.environ.get("DATABASE_URL")
+        conn = psycopg2.connect(db_url)
+        cursor = conn.cursor()
+        cursor.execute("SELECT refresh_token FROM api_configs WHERE service = 'clio' AND refresh_token IS NOT NULL LIMIT 1")
+        result = cursor.fetchone()
+
+        if not result or not result[0]:
+            print("❌ No refresh token found in database")
+            cursor.close()
+            conn.close()
+            return None
+
+        refresh_token = result[0]
+        print(f"🔄 Refreshing Clio token using refresh token...")
+
+        # Request new access token using refresh token
+        token_data = {
+            'grant_type': 'refresh_token',
+            'refresh_token': refresh_token,
+            'client_id': CLIO_CLIENT_ID,
+            'client_secret': CLIO_CLIENT_SECRET
+        }
+
+        response = requests.post(CLIO_TOKEN_URL, data=token_data, timeout=10)
+
+        if response.status_code == 200:
+            token_info = response.json()
+            new_access_token = token_info.get('access_token')
+            new_refresh_token = token_info.get('refresh_token', refresh_token)  # Use new refresh token if provided
+
+            # Update tokens in database
+            cursor.execute(
+                "UPDATE api_configs SET oauth_token = %s, refresh_token = %s, updated_at = NOW() WHERE service = 'clio'",
+                (new_access_token, new_refresh_token)
+            )
+            conn.commit()
+
+            # Also update session
+            session['clio_token'] = new_access_token
+            session['clio_refresh_token'] = new_refresh_token
+
+            print(f"✅ Successfully refreshed Clio token")
+            cursor.close()
+            conn.close()
+            return new_access_token
+        else:
+            print(f"❌ Failed to refresh token: {response.status_code} - {response.text}")
+            cursor.close()
+            conn.close()
+            return None
+
+    except Exception as e:
+        print(f"❌ Error refreshing Clio token: {str(e)}")
+        return None
+
 def extract_practice_area(description):
     """Extract practice area from description text"""
     if not description:
@@ -69,11 +128,11 @@ def parse_transcription_to_case_summary(transcription):
     """Parse transcription to extract key case details without full conversation"""
     if not transcription:
         return ""
-    
+
     # Look for key legal phrases and extract relevant details
     summary_parts = []
     transcription_lower = transcription.lower()
-    
+
     # Extract incident details
     if "accident" in transcription_lower:
         summary_parts.append("Incident: Motor vehicle accident")
@@ -87,7 +146,7 @@ def parse_transcription_to_case_summary(transcription):
         summary_parts.append("Matter: Criminal charges")
     elif "will" in transcription_lower or "estate" in transcription_lower:
         summary_parts.append("Matter: Estate planning")
-    
+
     # Extract injury details
     injuries = []
     if "injury" in transcription_lower or "injured" in transcription_lower:
@@ -99,10 +158,10 @@ def parse_transcription_to_case_summary(transcription):
             injuries.append("fracture")
         if "head" in transcription_lower:
             injuries.append("head injury")
-    
+
     if injuries:
         summary_parts.append(f"Injuries: {', '.join(injuries)}")
-    
+
     # Extract timeframe
     import re
     time_patterns = [
@@ -111,19 +170,19 @@ def parse_transcription_to_case_summary(transcription):
         r"yesterday",
         r"today"
     ]
-    
+
     for pattern in time_patterns:
         match = re.search(pattern, transcription_lower)
         if match:
             summary_parts.append(f"Timeframe: {match.group(0)}")
             break
-    
+
     # Extract if seeking specific outcomes
     if "compensation" in transcription_lower or "damages" in transcription_lower:
         summary_parts.append("Seeking: Compensation/damages")
     elif "medical" in transcription_lower and "bill" in transcription_lower:
         summary_parts.append("Seeking: Medical bill coverage")
-    
+
     # Join all parts or return truncated transcription
     if summary_parts:
         return " | ".join(summary_parts)
@@ -160,7 +219,7 @@ def index():
 
     # Generate auth URL for easy re-authentication
     auth_url = f"{CLIO_AUTH_URL}?response_type=code&client_id={CLIO_CLIENT_ID}&redirect_uri={CLIO_REDIRECT_URI}"
-    
+
     if clio_token:
         return jsonify({
             "status": "connected",
@@ -187,10 +246,10 @@ def test_clio_credentials():
 
         # Generate authorization URL to test client ID
         auth_url = f"{CLIO_AUTH_URL}?response_type=code&client_id={CLIO_CLIENT_ID}&redirect_uri={CLIO_REDIRECT_URI}"
-        
+
         # Test if we can reach Clio's OAuth endpoint
         test_response = requests.get(CLIO_AUTH_URL, timeout=10)
-        
+
         if test_response.status_code == 200:
             return jsonify({
                 "status": "success",
@@ -209,7 +268,7 @@ def test_clio_credentials():
                 "message": "Credentials configured but Clio endpoint unreachable",
                 "clio_status": test_response.status_code
             }), 200
-            
+
     except requests.exceptions.RequestException as e:
         return jsonify({
             "status": "error", 
@@ -228,7 +287,7 @@ def test_create_contact():
         # Try multiple authentication methods
         auth_header = None
         auth_method = None
-        
+
         # Method 1: Check for OAuth token
         clio_token = session.get('clio_token')
         if not clio_token:
@@ -245,16 +304,16 @@ def test_create_contact():
                 conn.close()
             except Exception:
                 pass
-        
+
         if clio_token:
             auth_header = f"Bearer {clio_token}"
             auth_method = "OAuth Token"
-        
+
         # Method 2: Check for API key
         elif os.environ.get('CLIO_API_KEY'):
             auth_header = f"Bearer {os.environ.get('CLIO_API_KEY')}"
             auth_method = "API Key"
-        
+
         # Method 3: Use Client Credentials flow (if supported)
         elif CLIO_CLIENT_ID and CLIO_CLIENT_SECRET:
             try:
@@ -273,7 +332,7 @@ def test_create_contact():
                         auth_method = "Client Credentials"
             except Exception as e:
                 pass
-        
+
         if not auth_header:
             return jsonify({
                 "status": "error",
@@ -281,7 +340,7 @@ def test_create_contact():
                 "tried_methods": ["OAuth token (from session/database)", "API key", "Client credentials"],
                 "solution": "Need either: 1) Complete OAuth authorization, 2) Provide CLIO_API_KEY, or 3) Use different Clio auth method"
             }), 401
-        
+
         # Create test contact data
         test_contact = {
             "data": {
@@ -298,21 +357,21 @@ def test_create_contact():
                 }]
             }
         }
-        
+
         # Make API call to Clio
         headers = {
             "Authorization": f"Bearer {clio_token}",
             "Content-Type": "application/json",
             "Accept": "application/json"
         }
-        
+
         response = requests.post(
             f"{CLIO_API_BASE}/contacts",
             headers=headers,
             json=test_contact,
             timeout=30
         )
-        
+
         if response.status_code == 201:
             contact_data = response.json()
             return jsonify({
@@ -327,7 +386,7 @@ def test_create_contact():
                 "message": f"Failed to create contact. Status: {response.status_code}",
                 "response": response.text
             }), response.status_code
-            
+
     except Exception as e:
         return jsonify({
             "status": "error",
@@ -408,7 +467,7 @@ def clio_callback():
 def debug_logs():
     """View recent webhook debug logs"""
     html = "<h2>Recent Webhook Debug Logs</h2>"
-    
+
     # Try file logs first (more reliable)
     try:
         if os.path.exists('webhook_logs.txt'):
@@ -422,7 +481,7 @@ def debug_logs():
             html += "<p>No webhook log file found yet.</p><hr>"
     except Exception as e:
         html += f"<p>Error reading file logs: {e}</p><hr>"
-    
+
     # Also try database logs
     try:
         db_url = os.environ.get("DATABASE_URL")
@@ -438,17 +497,17 @@ def debug_logs():
         logs = cursor.fetchall()
         cursor.close()
         conn.close()
-        
+
         html += "<h3>Database Logs:</h3>"
         if logs:
             for log in logs:
                 html += f"<div><strong>{log[0]}:</strong><br><pre>{log[1]}</pre><hr></div>"
         else:
             html += "<p>No database debug logs found.</p>"
-            
+
     except Exception as e:
         html += f"<p>Error retrieving database logs: {e}</p>"
-    
+
     return html
 
 @app.route('/api/ghl-webhook', methods=['POST'])
@@ -459,7 +518,7 @@ def ghl_webhook():
         print("✅ Incoming webhook data from GHL:", data)
         print(f"🔍 Transcription field: '{data.get('transcription', 'NOT FOUND')}'")
         print(f"🔍 CustomData: {data.get('customData', 'NOT FOUND')}")
-        
+
         # Log to database AND file for debugging since console logs aren't visible in production
         try:
             db_url = os.environ.get("DATABASE_URL")
@@ -474,7 +533,7 @@ def ghl_webhook():
             conn.close()
         except Exception as log_error:
             print(f"Failed to log to database: {log_error}")
-        
+
         # ALSO log to file as backup
         try:
             import datetime
@@ -496,7 +555,7 @@ def ghl_webhook():
         phone = data.get("phone", "")
         case_description = ""
         state = data.get("state", "")
-        
+
         # Try to extract from GHL contact object structure
         if "contact" in data and isinstance(data["contact"], dict):
             contact_obj = data["contact"]
@@ -510,7 +569,7 @@ def ghl_webhook():
                 email = contact_obj.get("email", "")
             if not phone:
                 phone = contact_obj.get("phone", "")
-        
+
         # Try to extract from other common webhook structures
         if "firstName" in data and not first_name:
             first_name = data.get("firstName", "")
@@ -518,17 +577,17 @@ def ghl_webhook():
             last_name = data.get("lastName", "")
         if "name" in data and not full_name:
             full_name = data.get("name", "")
-            
+
         # Build full_name if we have parts but not the whole
         if not full_name and (first_name or last_name):
             full_name = f"{first_name} {last_name}".strip()
-            
+
         # Extract first/last from full_name if we only have that
         if full_name and not first_name and not last_name:
             name_parts = full_name.split(' ', 1)
             first_name = name_parts[0] if name_parts else ""
             last_name = name_parts[1] if len(name_parts) > 1 else ""
-            
+
         print(f"🔍 Debug - Final extracted names: first='{first_name}', last='{last_name}', full='{full_name}'")
 
         # Try to extract case description from customData
@@ -556,7 +615,7 @@ def ghl_webhook():
 
         # Get the real Clio token from session or database
         clio_token = None
-        
+
         # Try to get token from session first
         if 'clio_token' in session:
             clio_token = session['clio_token']
@@ -578,13 +637,13 @@ def ghl_webhook():
                 conn.close()
             except Exception as e:
                 print(f"⚠️ Database error (will use mock data): {str(e)}")
-                
+
         # Debug token status
         if clio_token:
             print(f"✅ Found Clio token: {clio_token[:20]}...")
         else:
             print("❌ No Clio token found - this will cause API failures")
-        
+
         if clio_token:
             # Create contact in Clio and pass the token
             contact_data = create_clio_contact(full_name, email, phone, state, token=clio_token)
@@ -621,198 +680,6 @@ def ghl_webhook():
 
     except Exception as e:
         print(f"❌ Error processing webhook: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route('/api/ghl-webhook-test', methods=['POST'])
-def ghl_webhook_test():
-    """Test endpoint - logs webhook data without processing to Clio"""
-    try:
-        data = request.json
-        print("🧪 TEST WEBHOOK - Incoming data from GHL:", data)
-        
-        # Log to database for testing
-        try:
-            db_url = os.environ.get("DATABASE_URL")
-            conn = psycopg2.connect(db_url)
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO error_logs (error_type, error_message, transaction_id, created_at)
-                VALUES (%s, %s, %s, NOW())
-            """, ('TEST_WEBHOOK', f"Test webhook data: {str(data)}", 'test_webhook'))
-            conn.commit()
-            cursor.close()
-            conn.close()
-        except Exception as log_error:
-            print(f"Failed to log test webhook to database: {log_error}")
-        
-        # Log to file as backup
-        try:
-            import datetime
-            timestamp = datetime.datetime.now().isoformat()
-            with open('webhook_test_logs.txt', 'a') as f:
-                f.write(f"\n=== TEST WEBHOOK {timestamp} ===\n")
-                f.write(f"Data: {json.dumps(data, indent=2)}\n")
-                f.write("=" * 50 + "\n")
-        except Exception as file_log_error:
-            print(f"Failed to log test webhook to file: {file_log_error}")
-        
-        return jsonify({
-            "status": "success",
-            "message": "Test webhook received and logged (not processed to Clio)",
-            "data_received": data
-        })
-        
-    except Exception as e:
-        print(f"❌ Error in test webhook: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route('/api/ghl-webhook-live', methods=['POST'])
-def ghl_webhook_live():
-    """Live/Production endpoint - processes webhook data and forwards to Clio"""
-    try:
-        data = request.json
-        print("🚀 LIVE WEBHOOK - Incoming data from GHL:", data)
-        print(f"🔍 Transcription field: '{data.get('transcription', 'NOT FOUND')}'")
-        print(f"🔍 CustomData: {data.get('customData', 'NOT FOUND')}")
-        
-        # Log to database
-        try:
-            db_url = os.environ.get("DATABASE_URL")
-            conn = psycopg2.connect(db_url)
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO error_logs (error_type, error_message, transaction_id, created_at)
-                VALUES (%s, %s, %s, NOW())
-            """, ('LIVE_WEBHOOK', f"Live webhook data: {str(data)}", 'live_webhook'))
-            conn.commit()
-            cursor.close()
-            conn.close()
-        except Exception as log_error:
-            print(f"Failed to log live webhook to database: {log_error}")
-        
-        # Extract relevant data with multiple fallback methods
-        full_name = data.get("full_name", "")
-        first_name = data.get("first_name", "")
-        last_name = data.get("last_name", "")
-        email = data.get("email", "")
-        phone = data.get("phone", "")
-        case_description = ""
-        state = data.get("state", "")
-        
-        # Try to extract from GHL contact object structure
-        if "contact" in data and isinstance(data["contact"], dict):
-            contact_obj = data["contact"]
-            if not first_name:
-                first_name = contact_obj.get("first_name", "")
-            if not last_name:
-                last_name = contact_obj.get("last_name", "")
-            if not full_name and (first_name or last_name):
-                full_name = f"{first_name} {last_name}".strip()
-            if not email:
-                email = contact_obj.get("email", "")
-            if not phone:
-                phone = contact_obj.get("phone", "")
-        
-        # Try to extract from other common webhook structures
-        if "firstName" in data and not first_name:
-            first_name = data.get("firstName", "")
-        if "lastName" in data and not last_name:
-            last_name = data.get("lastName", "")
-        if "name" in data and not full_name:
-            full_name = data.get("name", "")
-            
-        # Build full_name if we have parts but not the whole
-        if not full_name and (first_name or last_name):
-            full_name = f"{first_name} {last_name}".strip()
-            
-        # Extract first/last from full_name if we only have that
-        if full_name and not first_name and not last_name:
-            name_parts = full_name.split(' ', 1)
-            first_name = name_parts[0] if name_parts else ""
-            last_name = name_parts[1] if len(name_parts) > 1 else ""
-
-        # Try to extract case description from customData
-        if "customData" in data and isinstance(data["customData"], dict):
-            custom_data = data["customData"]
-            if not full_name:
-                full_name = custom_data.get("full_name", "")
-            if not email:
-                email = custom_data.get("email", "")
-            if not phone:
-                phone = custom_data.get("phone", "")
-            case_description = custom_data.get("case_description", "")
-
-        # Check for transcription
-        transcription = data.get("transcription", "")
-
-        # Parse transcription into structured case summary
-        if transcription:
-            final_case_description = parse_transcription_to_case_summary(transcription)
-        else:
-            final_case_description = case_description
-
-        # Extract practice area from transcription first, then case_description
-        practice_area = extract_practice_area(transcription or case_description)
-
-        # Get the real Clio token from session or database
-        clio_token = None
-        
-        # Try to get token from session first
-        if 'clio_token' in session:
-            clio_token = session['clio_token']
-            print("✅ Using Clio token from session")
-        else:
-            # Then try to get token from database
-            try:
-                db_url = os.environ.get("DATABASE_URL")
-                conn = psycopg2.connect(db_url, connect_timeout=5)
-                cursor = conn.cursor()
-                cursor.execute("SELECT oauth_token FROM api_configs WHERE service = 'clio' AND oauth_token IS NOT NULL LIMIT 1")
-                result = cursor.fetchone()
-                if result and result[0]:
-                    clio_token = result[0]
-                    print("✅ Using Clio token from database")
-                cursor.close()
-                conn.close()
-            except Exception as e:
-                print(f"⚠️ Database error: {str(e)}")
-                
-        if clio_token:
-            # Create contact in Clio and pass the token
-            contact_data = create_clio_contact(full_name, email, phone, state, token=clio_token)
-
-            # Create matter in Clio
-            matter_data = create_clio_matter(contact_data, practice_area, final_case_description, token=clio_token)
-
-            # Log successful completion
-            try:
-                db_url = os.environ.get("DATABASE_URL")
-                conn = psycopg2.connect(db_url)
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO error_logs (error_type, error_message, transaction_id, created_at)
-                    VALUES (%s, %s, %s, NOW())
-                """, ('LIVE_WEBHOOK_SUCCESS', f"Successfully created contact: {contact_data} and matter: {matter_data}", 'live_webhook_success'))
-                conn.commit()
-                cursor.close()
-                conn.close()
-            except Exception as log_error:
-                print(f"Failed to log success to database: {log_error}")
-
-            return jsonify({
-                "status": "success",
-                "message": "Data forwarded to Clio",
-                "clio_contact": contact_data,
-                "clio_matter": matter_data
-            })
-        else:
-            return jsonify({
-                "status": "error",
-                "message": "Not authenticated with Clio"
-            }), 401
-
-    except Exception as e:
-        print(f"❌ Error processing live webhook: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/clio-webhook', methods=['POST'])
@@ -1052,6 +919,39 @@ def create_clio_contact(full_name, email, phone, state=None, token=None):
         if response.status_code in [200, 201]:
             print("Successfully created contact in Clio")
             return response.json()
+        elif response.status_code == 401:
+            # Token expired - try to refresh automatically
+            print("🔄 Token expired (401), attempting auto-refresh...")
+            new_token = refresh_clio_token()
+
+            if new_token:
+                # Retry with new token
+                print("🔄 Retrying contact creation with refreshed token...")
+                headers["Authorization"] = f"Bearer {new_token}"
+                retry_response = requests.post(
+                    contacts_url,
+                    headers=headers,
+                    json=contact_data,
+                    timeout=20
+                )
+
+                if retry_response.status_code in [200, 201]:
+                    print("✅ Successfully created contact after token refresh")
+                    return retry_response.json()
+                else:
+                    print(f"❌ Failed even after token refresh. Status: {retry_response.status_code}")
+                    return {
+                        "error": f"Failed to create contact even after token refresh. Status: {retry_response.status_code}",
+                        "response_body": retry_response.text,
+                        "request_data": contact_data
+                    }
+            else:
+                print("❌ Could not refresh token")
+                return {
+                    "error": "Token expired and could not be refreshed automatically",
+                    "response_body": response.text,
+                    "request_data": contact_data
+                }
         else:
             print(f"❌ Failed to create contact in Clio. Status: {response.status_code}")
             print(f"❌ Response: {response.text}")
@@ -1118,6 +1018,39 @@ def create_clio_matter(contact_data, practice_area, description, token=None):
         if response.status_code in [200, 201]:
             print("✅ Successfully created matter in Clio")
             return response.json()
+        elif response.status_code == 401:
+            # Token expired - try to refresh automatically
+            print("🔄 Token expired (401), attempting auto-refresh...")
+            new_token = refresh_clio_token()
+
+            if new_token:
+                # Retry with new token
+                print("🔄 Retrying matter creation with refreshed token...")
+                headers["Authorization"] = f"Bearer {new_token}"
+                retry_response = requests.post(
+                    f"{CLIO_API_BASE}/matters",
+                    headers=headers,
+                    json=matter_data,
+                    timeout=20
+                )
+
+                if retry_response.status_code in [200, 201]:
+                    print("✅ Successfully created matter after token refresh")
+                    return retry_response.json()
+                else:
+                    print(f"❌ Failed even after token refresh. Status: {retry_response.status_code}")
+                    return {
+                        "error": f"Failed to create matter even after token refresh. Status: {retry_response.status_code}",
+                        "response_body": retry_response.text,
+                        "contact_id": contact_id
+                    }
+            else:
+                print("❌ Could not refresh token")
+                return {
+                    "error": "Token expired and could not be refreshed automatically",
+                    "response_body": response.text,
+                    "contact_id": contact_id
+                }
         else:
             # If this format fails, try the alternative endpoint
             print("🔄 Trying alternative endpoint: /contacts/{id}/matters")
