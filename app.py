@@ -654,7 +654,7 @@ def ghl_webhook_live():
         elif case_description:
             final_case_description = case_description
         else:
-            final_case_description = "New lead from GoHighLevel"
+            final_case_description = ""
 
         # Extract practice area from transcription first, then case_description
         practice_area = extract_practice_area(transcription or case_description)
@@ -828,7 +828,7 @@ def ghl_webhook():
         elif case_description:
             final_case_description = case_description
         else:
-            final_case_description = "New lead from GoHighLevel"
+            final_case_description = ""
 
         # Extract practice area from transcription first, then case_description
         practice_area = extract_practice_area(transcription or case_description)
@@ -1216,7 +1216,7 @@ def create_clio_matter(contact_data, practice_area, description, token=None):
                 "id": str(contact_id)
             },
             "display_number": f"GHL-{contact_id}",
-            "description": description or "Lead from GoHighLevel",
+            "description": description if description else "",
             "status": "Pending",
             "practice_area": practice_area or "General"
         }
@@ -1282,7 +1282,7 @@ def create_clio_matter(contact_data, practice_area, description, token=None):
                     "data": {
                         "type": "Matter",
                         "display_number": f"GHL-{contact_id}",
-                        "description": description or "Lead from GoHighLevel",
+                        "description": description if description else "",
                         "status": "Pending",
                         "practice_area": practice_area or "General"
                     }
