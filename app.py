@@ -547,6 +547,14 @@ def ghl_webhook_live():
         # Extract brief description (matter type + location) for Clio description field
         brief_description = extract_matter_description(transcription)
         
+        # FORCE truncation to be safe - Clio has 255 char limit
+        if brief_description and len(brief_description) > 255:
+            brief_description = brief_description[:252] + "..."
+        
+        # If extraction failed, use a safe default
+        if not brief_description:
+            brief_description = "New matter from GoHighLevel"
+        
         # Keep full transcription for Clio notes (65K char limit)
         full_transcription = transcription
 
@@ -559,7 +567,7 @@ def ghl_webhook_live():
         print(f"  Phone: {phone}")
         print(f"  State: {state}")
         print(f"  Practice Area: {practice_area}")
-        print(f"  Brief Description: {brief_description}")
+        print(f"  Brief Description ({len(brief_description)} chars): {brief_description}")
         print(f"  Full Transcription Length: {len(full_transcription)} chars")
 
         # Validate required fields
@@ -647,6 +655,14 @@ def gohighlevel_webhook():
         # Extract brief description (matter type + location) for Clio description field
         brief_description = extract_matter_description(transcription)
         
+        # FORCE truncation to be safe - Clio has 255 char limit
+        if brief_description and len(brief_description) > 255:
+            brief_description = brief_description[:252] + "..."
+        
+        # If extraction failed, use a safe default
+        if not brief_description:
+            brief_description = "New matter from GoHighLevel"
+        
         # Keep full transcription for Clio notes (65K char limit)
         full_transcription = transcription
 
@@ -659,7 +675,7 @@ def gohighlevel_webhook():
         print(f"  Phone: {phone}")
         print(f"  State: {state}")
         print(f"  Practice Area: {practice_area}")
-        print(f"  Brief Description: {brief_description}")
+        print(f"  Brief Description ({len(brief_description)} chars): {brief_description}")
         print(f"  Full Transcription Length: {len(full_transcription)} chars")
 
         # Validate required fields
