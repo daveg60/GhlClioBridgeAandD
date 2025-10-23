@@ -510,6 +510,220 @@ def debug_logs():
 
     return html
 
+@app.route('/api/ghl-webhook-test', methods=['POST'])
+def ghl_webhook_test():
+    """Test endpoint - receives and logs webhook data WITHOUT creating Clio records"""
+    try:
+        data = request.json
+        print("✅ TEST WEBHOOK - Incoming data from GHL:", data)
+        
+        # Log to database for debugging
+        try:
+            db_url = os.environ.get("DATABASE_URL")
+            conn = psycopg2.connect(db_url)
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO error_logs (error_type, error_message, transaction_id, created_at)
+                VALUES (%s, %s, %s, NOW())
+            """, ('TEST_WEBHOOK', f"Received test webhook: {json.dumps(data, indent=2)}", 'test_webhook'))
+            conn.commit()
+            cursor.close()
+            conn.close()
+        except Exception as log_error:
+            print(f"Failed to log to database: {log_error}")
+        
+        # Log to file as backup
+        try:
+            import datetime
+            timestamp = datetime.datetime.now().isoformat()
+            with open('webhook_logs.txt', 'a') as f:
+                f.write(f"\n=== TEST WEBHOOK {timestamp} ===\n")
+                f.write(f"Data: {json.dumps(data, indent=2)}\n")
+                f.write("=" * 50 + "\n")
+        except Exception as file_log_error:
+            print(f"Failed to log to file: {file_log_error}")
+        
+        return jsonify({
+            "status": "success",
+            "message": "Test webhook received and logged (no Clio records created)",
+            "data_received": data
+        })
+        
+    except Exception as e:
+        print(f"❌ Error processing test webhook: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/ghl-webhook-live', methods=['POST'])
+def ghl_webhook_live():
+    """Live endpoint - creates contacts and matters in Clio"""
+    try:
+        data = request.json
+        print("✅ LIVE WEBHOOK - Incoming data from GHL:", data)
+        print(f"🔍 Transcription field: '{data.get('transcription', 'NOT FOUND')}'")
+        print(f"🔍 CustomData: {data.get('customData', 'NOT FOUND')}")
+
+        # Log to database AND file for debugging
+        try:
+            db_url = os.environ.get("DATABASE_URL")
+            conn = psycopg2.connect(db_url)
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO error_logs (error_type, error_message, transaction_id, created_at)
+                VALUES (%s, %s, %s, NOW())
+            """, ('LIVE_WEBHOOK', f"Received live webhook data: {str(data)}", 'live_webhook'))
+            conn.commit()
+            cursor.close()
+            conn.close()
+        except Exception as log_error:
+            print(f"Failed to log to database: {log_error}")
+
+        # ALSO log to file as backup
+        try:
+            import datetime
+            timestamp = datetime.datetime.now().isoformat()
+            with open('webhook_logs.txt', 'a') as f:
+                f.write(f"\n=== LIVE WEBHOOK {timestamp} ===\n")
+                f.write(f"Data: {json.dumps(data, indent=2)}\n")
+                f.write(f"Transcription: {data.get('transcription', 'NOT FOUND')}\n")
+                f.write(f"CustomData: {data.get('customData', 'NOT FOUND')}\n")
+                f.write("=" * 50 + "\n")
+        except Exception as file_log_error:
+            print(f"Failed to log to file: {file_log_error}")
+
+        # Extract relevant data with multiple fallback methods
+        full_name = data.get("full_name", "")
+        first_name = data.get("first_name", "")
+        last_name = data.get("last_name", "")
+        email = data.get("email", "")
+        phone = data.get("phone", "")
+        case_description = ""
+        state = data.get("state", "")
+
+        # Try to extract from GHL contact object structure
+        if "contact" in data and isinstance(data["contact"], dict):
+            contact_obj = data["contact"]
+            if not first_name:
+                first_name = contact_obj.get("first_name", "")
+            if not last_name:
+                last_name = contact_obj.get("last_name", "")
+            if not full_name and (first_name or last_name):
+                full_name = f"{first_name} {last_name}".strip()
+            if not email:
+                email = contact_obj.get("email", "")
+            if not phone:
+                phone = contact_obj.get("phone", "")
+
+        # Try to extract from other common webhook structures
+        if "firstName" in data and not first_name:
+            first_name = data.get("firstName", "")
+        if "lastName" in data and not last_name:
+            last_name = data.get("lastName", "")
+        if "name" in data and not full_name:
+            full_name = data.get("name", "")
+
+        # Build full_name if we have parts but not the whole
+        if not full_name and (first_name or last_name):
+            full_name = f"{first_name} {last_name}".strip()
+
+        # Extract first/last from full_name if we only have that
+        if full_name and not first_name and not last_name:
+            name_parts = full_name.split(' ', 1)
+            first_name = name_parts[0] if name_parts else ""
+            last_name = name_parts[1] if len(name_parts) > 1 else ""
+
+        print(f"🔍 Debug - Final extracted names: first='{first_name}', last='{last_name}', full='{full_name}'")
+
+        # Try to extract case description from customData
+        if "customData" in data and isinstance(data["customData"], dict):
+            custom_data = data["customData"]
+            if not full_name:
+                full_name = custom_data.get("full_name", "")
+            if not email:
+                email = custom_data.get("email", "")
+            if not phone:
+                phone = custom_data.get("phone", "")
+            case_description = custom_data.get("case_description", "")
+
+        # Check for transcription
+        transcription = data.get("transcription", "")
+
+        # Parse transcription into structured case summary
+        if transcription:
+            final_case_description = parse_transcription_to_case_summary(transcription)
+        else:
+            final_case_description = case_description
+
+        # Extract practice area from transcription first, then case_description
+        practice_area = extract_practice_area(transcription or case_description)
+
+        # Get the real Clio token from session or database
+        clio_token = None
+
+        # Try to get token from session first
+        if 'clio_token' in session:
+            clio_token = session['clio_token']
+            print("✅ Using Clio token from session")
+        else:
+            # Then try to get token from database
+            try:
+                import psycopg2
+                db_url = os.environ.get("DATABASE_URL")
+                conn = psycopg2.connect(db_url, connect_timeout=5)
+                cursor = conn.cursor()
+                cursor.execute("SELECT oauth_token FROM api_configs WHERE service = 'clio' AND oauth_token IS NOT NULL LIMIT 1")
+                result = cursor.fetchone()
+                if result and result[0]:
+                    clio_token = result[0]
+                    print("✅ Using Clio token from database")
+                cursor.close()
+                conn.close()
+            except Exception as e:
+                print(f"⚠️ Database error (will use mock data): {str(e)}")
+
+        # Debug token status
+        if clio_token:
+            print(f"✅ Found Clio token: {clio_token[:20]}...")
+        else:
+            print("❌ No Clio token found - this will cause API failures")
+
+        if clio_token:
+            # Create contact in Clio and pass the token
+            contact_data = create_clio_contact(full_name, email, phone, state, token=clio_token)
+
+            # Create matter in Clio
+            matter_data = create_clio_matter(contact_data, practice_area, final_case_description, token=clio_token)
+
+            # Log successful completion
+            try:
+                db_url = os.environ.get("DATABASE_URL")
+                conn = psycopg2.connect(db_url)
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO error_logs (error_type, error_message, transaction_id, created_at)
+                    VALUES (%s, %s, %s, NOW())
+                """, ('WEBHOOK_SUCCESS', f"Successfully created contact: {contact_data} and matter: {matter_data}", 'webhook_success'))
+                conn.commit()
+                cursor.close()
+                conn.close()
+            except Exception as log_error:
+                print(f"Failed to log success to database: {log_error}")
+
+            return jsonify({
+                "status": "success",
+                "message": "Data forwarded to Clio",
+                "clio_contact": contact_data,
+                "clio_matter": matter_data
+            })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Not authenticated with Clio"
+            }), 401
+
+    except Exception as e:
+        print(f"❌ Error processing live webhook: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/ghl-webhook', methods=['POST'])
 def ghl_webhook():
     """Handle webhook from GoHighLevel"""
