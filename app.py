@@ -553,7 +553,7 @@ def ghl_webhook_live():
         
         # If extraction failed, use a safe default
         if not brief_description:
-            brief_description = "New matter from GoHighLevel"
+            brief_description = "New matter from Law Leaders/Legal Navigator"
         
         # Keep full transcription for Clio notes (65K char limit)
         full_transcription = transcription
@@ -661,7 +661,7 @@ def gohighlevel_webhook():
         
         # If extraction failed, use a safe default
         if not brief_description:
-            brief_description = "New matter from GoHighLevel"
+            brief_description = "New matter from Law Leaders/Legal Navigator"
         
         # Keep full transcription for Clio notes (65K char limit)
         full_transcription = transcription
