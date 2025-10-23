@@ -126,6 +126,8 @@ def extract_matter_description(transcription):
         parts.append("Will contest")
     elif "estate litigation" in text_lower:
         parts.append("Estate litigation")
+    elif "probate" in text_lower:
+        parts.append("Probate")
     elif "trust" in text_lower:
         parts.append("Trust matter")
     elif "will" in text_lower:
