@@ -607,8 +607,8 @@ def gohighlevel_webhook():
             "contact": contact_result,
             "matter": matter_result,
             "practice_area": practice_area,
-            "case_summary": case_summary,
-            "case_summary_length": len(case_summary)
+            "brief_description": brief_description,
+            "transcription_length": len(full_transcription)
         }), 200
 
     except Exception as e:
@@ -640,7 +640,6 @@ def create_clio_contact(name, email=None, phone=None, state=None, token=None):
     contact_data = {
         "data": {
             "type": "Person",
-            "name": name,
             "first_name": name.split()[0] if name else "",
             "last_name": " ".join(name.split()[1:]) if len(name.split()) > 1 else ""
         }
@@ -802,12 +801,11 @@ def create_clio_matter(contact_data, practice_area, description, full_transcript
                 print(f"📝 Adding full transcription as note ({len(full_transcription)} chars)...")
                 note_data = {
                     "data": {
+                        "type": "Matter",
                         "subject": "Call Transcription",
                         "detail": full_transcription,
-                        "type": "matter",
-                        "regarding": {
-                            "id": matter_id,
-                            "type": "Matter"
+                        "matter": {
+                            "id": matter_id
                         }
                     }
                 }
