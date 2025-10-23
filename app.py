@@ -521,6 +521,106 @@ def get_token_from_db():
         print(f"Error getting token from database: {e}")
         return None
 
+@app.route('/api/ghl-webhook-live', methods=['POST'])
+def ghl_webhook_live():
+    """Live webhook endpoint for GoHighLevel - same as /webhook/gohighlevel"""
+    try:
+        # Get JSON data from GoHighLevel
+        data = request.get_json()
+
+        print("=" * 50)
+        print("📥 Received webhook from GoHighLevel (LIVE)")
+        print(f"Full payload: {json.dumps(data, indent=2)}")
+        print("=" * 50)
+
+        # Extract contact information
+        name = data.get('name', data.get('contact', {}).get('name', ''))
+        email = data.get('email', data.get('contact', {}).get('email', ''))
+        phone = data.get('phone', data.get('contact', {}).get('phone', ''))
+        state = data.get('state', data.get('contact', {}).get('state', ''))
+
+        # Extract transcription for case description
+        transcription = data.get('transcription', '')
+        if not transcription and 'customData' in data:
+            transcription = data.get('customData', {}).get('transcription', '')
+
+        # Extract brief description (matter type + location) for Clio description field
+        brief_description = extract_matter_description(transcription)
+        
+        # Keep full transcription for Clio notes (65K char limit)
+        full_transcription = transcription
+
+        # Extract practice area based on transcription
+        practice_area = extract_practice_area(transcription)
+
+        print(f"📋 Extracted Info:")
+        print(f"  Name: {name}")
+        print(f"  Email: {email}")
+        print(f"  Phone: {phone}")
+        print(f"  State: {state}")
+        print(f"  Practice Area: {practice_area}")
+        print(f"  Brief Description: {brief_description}")
+        print(f"  Full Transcription Length: {len(full_transcription)} chars")
+
+        # Validate required fields
+        if not name:
+            return jsonify({"error": "Name is required"}), 400
+
+        # Get Clio token
+        token = session.get('clio_token') or get_token_from_db()
+        if not token:
+            return jsonify({"error": "Not authenticated with Clio"}), 401
+
+        # Step 1: Create contact in Clio
+        print("\n🔄 Creating contact in Clio...")
+        contact_result = create_clio_contact(name, email, phone, state, token)
+
+        if "error" in contact_result:
+            print(f"❌ Contact creation failed: {contact_result}")
+            return jsonify({
+                "status": "error",
+                "message": "Data forwarded to Clio",
+                "clio_contact": contact_result,
+                "clio_matter": {"error": "Contact creation failed"}
+            }), 400
+
+        print(f"✅ Contact created: {json.dumps(contact_result, indent=2)}")
+
+        # Step 2: Create matter in Clio with brief description and full transcription note
+        print("\n🔄 Creating matter in Clio...")
+        matter_result = create_clio_matter(
+            contact_result, 
+            practice_area, 
+            brief_description,  # Brief description (matter type + location)
+            full_transcription,  # Full transcription goes to notes
+            token
+        )
+
+        if "error" in matter_result:
+            print(f"❌ Matter creation failed: {matter_result}")
+            return jsonify({
+                "status": "success",
+                "message": "Data forwarded to Clio",
+                "clio_contact": contact_result,
+                "clio_matter": matter_result
+            }), 200
+
+        print(f"✅ Matter created: {json.dumps(matter_result, indent=2)}")
+
+        # Return success response in the format GHL expects
+        return jsonify({
+            "status": "success",
+            "message": "Data forwarded to Clio",
+            "clio_contact": contact_result,
+            "clio_matter": matter_result
+        }), 200
+
+    except Exception as e:
+        print(f"❌ Exception in webhook: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Exception: {str(e)}"}), 500
+
 @app.route('/webhook/gohighlevel', methods=['POST'])
 def gohighlevel_webhook():
     """Main webhook endpoint for GoHighLevel"""
