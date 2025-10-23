@@ -649,12 +649,19 @@ def ghl_webhook_live():
         if not transcription and "customData" in data and isinstance(data["customData"], dict):
             transcription = data["customData"].get("transcription", "")
 
-        # Use full transcription as description (preserve all details)
+        # Use transcription as description (Clio has 255 char limit on description)
         # Fall back to case_description from customData if no transcription
         if transcription:
-            final_case_description = transcription
+            # Truncate to fit Clio's 255 character limit
+            if len(transcription) > 255:
+                final_case_description = transcription[:252] + "..."
+            else:
+                final_case_description = transcription
         elif case_description:
-            final_case_description = case_description
+            if len(case_description) > 255:
+                final_case_description = case_description[:252] + "..."
+            else:
+                final_case_description = case_description
         else:
             final_case_description = ""
 
@@ -825,12 +832,19 @@ def ghl_webhook():
         if not transcription and "customData" in data and isinstance(data["customData"], dict):
             transcription = data["customData"].get("transcription", "")
 
-        # Use full transcription as description (preserve all details)
+        # Use transcription as description (Clio has 255 char limit on description)
         # Fall back to case_description from customData if no transcription
         if transcription:
-            final_case_description = transcription
+            # Truncate to fit Clio's 255 character limit
+            if len(transcription) > 255:
+                final_case_description = transcription[:252] + "..."
+            else:
+                final_case_description = transcription
         elif case_description:
-            final_case_description = case_description
+            if len(case_description) > 255:
+                final_case_description = case_description[:252] + "..."
+            else:
+                final_case_description = case_description
         else:
             final_case_description = ""
 
