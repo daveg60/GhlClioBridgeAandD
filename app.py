@@ -110,6 +110,70 @@ def extract_practice_area(description):
     # If no trust/will keywords found, return "Other"
     return "Other"
 
+def extract_matter_description(transcription):
+    """Extract brief matter description: matter type and location only"""
+    if not transcription:
+        return ""
+    
+    import re
+    text_lower = transcription.lower()
+    parts = []
+    
+    # Extract matter type
+    if "trust litigation" in text_lower:
+        parts.append("Trust litigation")
+    elif "will contest" in text_lower or "contested will" in text_lower:
+        parts.append("Will contest")
+    elif "estate litigation" in text_lower:
+        parts.append("Estate litigation")
+    elif "trust" in text_lower:
+        parts.append("Trust matter")
+    elif "will" in text_lower:
+        parts.append("Will matter")
+    elif "personal injury" in text_lower or "accident" in text_lower:
+        parts.append("Personal injury")
+    elif "divorce" in text_lower:
+        parts.append("Divorce")
+    elif "custody" in text_lower:
+        parts.append("Child custody")
+    elif "criminal" in text_lower:
+        parts.append("Criminal matter")
+    
+    # Extract state/location
+    state_patterns = [
+        (r'\bcalifornia\b', 'California'),
+        (r'\bCA\b', 'California'),
+        (r'\btexas\b', 'Texas'),
+        (r'\bTX\b', 'Texas'),
+        (r'\bflorida\b', 'Florida'),
+        (r'\bFL\b', 'Florida'),
+        (r'\bnew york\b', 'New York'),
+        (r'\bNY\b', 'New York'),
+        (r'\bariz ona\b', 'Arizona'),
+        (r'\bAZ\b', 'Arizona'),
+        (r'\bnevada\b', 'Nevada'),
+        (r'\bNV\b', 'Nevada'),
+    ]
+    
+    for pattern, state_name in state_patterns:
+        if re.search(pattern, transcription, re.IGNORECASE):
+            parts.append(state_name)
+            break
+    
+    # Join with " - " if we have both, or return what we have
+    if len(parts) == 2:
+        description = f"{parts[0]} - {parts[1]}"
+    elif len(parts) == 1:
+        description = parts[0]
+    else:
+        description = ""
+    
+    # Ensure within 255 char limit
+    if len(description) > 255:
+        description = description[:252] + "..."
+    
+    return description
+
 def parse_transcription_to_case_summary(transcription):
     """
     Parse transcription to extract key case details for Trust/Will litigation cases.
@@ -477,12 +541,17 @@ def gohighlevel_webhook():
 
         # Extract transcription for case description
         transcription = data.get('transcription', '')
+        if not transcription and 'customData' in data:
+            transcription = data.get('customData', {}).get('transcription', '')
 
-        # Parse transcription to create summary
-        case_summary = parse_transcription_to_case_summary(transcription)
+        # Extract brief description (matter type + location) for Clio description field
+        brief_description = extract_matter_description(transcription)
+        
+        # Keep full transcription for Clio notes (65K char limit)
+        full_transcription = transcription
 
-        # Extract practice area based on case summary
-        practice_area = extract_practice_area(case_summary)
+        # Extract practice area based on transcription
+        practice_area = extract_practice_area(transcription)
 
         print(f"📋 Extracted Info:")
         print(f"  Name: {name}")
@@ -490,7 +559,8 @@ def gohighlevel_webhook():
         print(f"  Phone: {phone}")
         print(f"  State: {state}")
         print(f"  Practice Area: {practice_area}")
-        print(f"  Case Summary ({len(case_summary)} chars): {case_summary}")
+        print(f"  Brief Description: {brief_description}")
+        print(f"  Full Transcription Length: {len(full_transcription)} chars")
 
         # Validate required fields
         if not name:
@@ -511,12 +581,13 @@ def gohighlevel_webhook():
 
         print(f"✅ Contact created: {json.dumps(contact_result, indent=2)}")
 
-        # Step 2: Create matter in Clio
+        # Step 2: Create matter in Clio with brief description and full transcription note
         print("\n🔄 Creating matter in Clio...")
         matter_result = create_clio_matter(
             contact_result, 
             practice_area, 
-            case_summary,  # Use the parsed summary (under 255 chars)
+            brief_description,  # Brief description (matter type + location)
+            full_transcription,  # Full transcription goes to notes
             token
         )
 
@@ -666,8 +737,8 @@ def create_clio_contact(name, email=None, phone=None, state=None, token=None):
         print(f"Exception when creating contact: {str(e)}")
         return {"error": f"Exception when creating contact: {str(e)}"}
 
-def create_clio_matter(contact_data, practice_area, description, token=None):
-    """Create a matter in Clio using the correct API format"""
+def create_clio_matter(contact_data, practice_area, description, full_transcription="", token=None):
+    """Create a matter in Clio and add full transcription as a note"""
     import requests
     import json
     from flask import session
@@ -723,7 +794,37 @@ def create_clio_matter(contact_data, practice_area, description, token=None):
 
         if response.status_code in [200, 201]:
             print("✅ Successfully created matter in Clio")
-            return response.json()
+            matter_result = response.json()
+            matter_id = matter_result.get("data", {}).get("id")
+            
+            # Create a note with the full transcription if available
+            if full_transcription and matter_id:
+                print(f"📝 Adding full transcription as note ({len(full_transcription)} chars)...")
+                note_data = {
+                    "data": {
+                        "subject": "Call Transcription",
+                        "detail": full_transcription,
+                        "type": "matter",
+                        "regarding": {
+                            "id": matter_id,
+                            "type": "Matter"
+                        }
+                    }
+                }
+                
+                note_response = requests.post(
+                    f"{CLIO_API_BASE}/notes",
+                    headers=headers,
+                    json=note_data,
+                    timeout=20
+                )
+                
+                if note_response.status_code in [200, 201]:
+                    print("✅ Successfully added transcription note to matter")
+                else:
+                    print(f"⚠️ Failed to add note: {note_response.status_code} - {note_response.text}")
+            
+            return matter_result
         elif response.status_code == 401:
             # Token expired - try to refresh automatically
             print("🔄 Token expired (401), attempting auto-refresh...")
