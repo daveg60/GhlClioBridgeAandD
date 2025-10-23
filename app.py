@@ -647,11 +647,14 @@ def ghl_webhook_live():
         # Check for transcription
         transcription = data.get("transcription", "")
 
-        # Parse transcription into structured case summary
+        # Use full transcription as description (preserve all details)
+        # Fall back to case_description from customData if no transcription
         if transcription:
-            final_case_description = parse_transcription_to_case_summary(transcription)
-        else:
+            final_case_description = transcription
+        elif case_description:
             final_case_description = case_description
+        else:
+            final_case_description = "New lead from GoHighLevel"
 
         # Extract practice area from transcription first, then case_description
         practice_area = extract_practice_area(transcription or case_description)
@@ -818,11 +821,14 @@ def ghl_webhook():
         # Check for transcription
         transcription = data.get("transcription", "")
 
-        # Parse transcription into structured case summary
+        # Use full transcription as description (preserve all details)
+        # Fall back to case_description from customData if no transcription
         if transcription:
-            final_case_description = parse_transcription_to_case_summary(transcription)
-        else:
+            final_case_description = transcription
+        elif case_description:
             final_case_description = case_description
+        else:
+            final_case_description = "New lead from GoHighLevel"
 
         # Extract practice area from transcription first, then case_description
         practice_area = extract_practice_area(transcription or case_description)
