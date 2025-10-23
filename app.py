@@ -536,7 +536,11 @@ def ghl_webhook_live():
         print("=" * 50)
 
         # Extract contact information
-        name = data.get('name', data.get('contact', {}).get('name', ''))
+        # GHL sends first_name and last_name separately
+        first_name = data.get('first_name', '')
+        last_name = data.get('last_name', '')
+        name = f"{first_name} {last_name}".strip() if (first_name or last_name) else ''
+        
         email = data.get('email', data.get('contact', {}).get('email', ''))
         phone = data.get('phone', data.get('contact', {}).get('phone', ''))
         state = data.get('state', data.get('contact', {}).get('state', ''))
