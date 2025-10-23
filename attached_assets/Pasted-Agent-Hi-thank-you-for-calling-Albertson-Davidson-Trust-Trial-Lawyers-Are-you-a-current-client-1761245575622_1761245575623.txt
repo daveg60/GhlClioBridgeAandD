@@ -1,0 +1,101 @@
+Agent: Hi, thank you for calling Albertson & Davidson, Trust Trial Lawyers. Are you a current client of the firm?
+
+User: No.
+
+Agent: Alright, are you looking to become a new client, or is there another reason for your call?
+
+User: I'm looking to become a new client.
+
+Agent: Got it. Can you please describe the legal matter you're dealing with?
+
+User: Yes. I have a trust litigation issue in California.
+
+Agent: Alright, so this is a trust litigation matter in California. Let me confirm—does this involve real property, or is the trustee or the trust located in California?
+
+User: Yes.
+
+Agent: Okay, thank you. Is this related to a potential or currently contested trust, or is it for trust litigation?
+
+User: I said it was for trust litigation. Where are you getting lost on this?
+
+Agent: Got it, trust litigation—thanks for clarifying. We’ll go through a few questions to determine if we can assist. It should only take a few minutes. Are you okay with that?
+
+User: No. I'm short on time.
+
+Agent: Understood. Let’s go with a shorter version of the questions. First, is this for a trust or a will?
+
+User: It's for a trust. I already said that.
+
+Agent: Thanks for confirming. Do you know the date of inception of the trust?
+
+User: No.
+
+Agent: Alright, were there any amendments to the trust that you’re aware of?
+
+User: No.
+
+Agent: Okay. Do you have a copy of the trust, or can you get one?
+
+User: Yeah.
+
+Agent: Great. How many beneficiaries are there in the trust?
+
+User: One.
+
+Agent: Thanks. Are you the beneficiary, or are you speaking on behalf of the beneficiary?
+
+User: Yeah.
+
+Agent: Just to clarify, are you the beneficiary?
+
+User: Yes.
+
+Agent: Thank you. What’s the approximate value of the estate, including all properties and accounts?
+
+User: One million dollars.
+
+Agent: Thanks for sharing that. Since the estate value is under $2 million and there’s only one beneficiary, it seems like your share would be under our qualifying threshold of $750,000. Based on this, it looks like we may not be the best fit for your case.
+
+User: Did you hello.
+
+Agent: else I can assist you with?
+
+User: Yes. Did you
+
+Agent: I’m
+
+User: do your division correctly?
+
+Agent: Ah, you're absolutely right to double-check! Since there's only one beneficiary, the entire estate value of $1 million would be your share. Unfortunately, that still falls below our qualifying threshold of $750,000 for a beneficiary's share.I hope that
+
+User: Are you serious
+
+Agent: clears things up! Is
+
+User: right now?
+
+Agent: I hear your
+
+User: Is a million dollars more than seven hundred and fifty thousand dollars?
+
+Agent: You're absolutely right—a million dollars is indeed more than $750,000. I misspoke earlier, and I truly apologize for the confusion. Based on the information you’ve provided, it does sound like you meet our qualifications. Let me gather your contact details so we can move forward. May I have your full name, please?
+
+User: Law leaders.
+
+Agent: Thank you, Law Leaders. May I have your phone number, please?
+
+User: Six two three three nine nine four two five nine.
+
+Agent: Got it. That’s 6 2 3 … 3 9 9 … 4 2 5 9, correct?
+
+User: Yes.
+
+Agent: Perfect, thank you. Lastly, may I have your email address?
+
+User: Dave at Law Leaders dot com.
+
+Agent: Thanks! So that’s D A V E … at … L A W L E A D E R S … dot com, correct?
+
+User: Yeah.
+
+Agent: Great! It sounds like we may be able to help. Our team will review your matter and get back to you if you qualify for a free consultation. Thanks for contacting Albertson & Davidson, LLP! We’ll be in touch soon. Have a great day!
