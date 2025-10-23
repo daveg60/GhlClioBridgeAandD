@@ -644,8 +644,10 @@ def ghl_webhook_live():
                 phone = custom_data.get("phone", "")
             case_description = custom_data.get("case_description", "")
 
-        # Check for transcription
+        # Check for transcription (top level first, then in customData)
         transcription = data.get("transcription", "")
+        if not transcription and "customData" in data and isinstance(data["customData"], dict):
+            transcription = data["customData"].get("transcription", "")
 
         # Use full transcription as description (preserve all details)
         # Fall back to case_description from customData if no transcription
@@ -818,8 +820,10 @@ def ghl_webhook():
                 phone = custom_data.get("phone", "")
             case_description = custom_data.get("case_description", "")
 
-        # Check for transcription
+        # Check for transcription (top level first, then in customData)
         transcription = data.get("transcription", "")
+        if not transcription and "customData" in data and isinstance(data["customData"], dict):
+            transcription = data["customData"].get("transcription", "")
 
         # Use full transcription as description (preserve all details)
         # Fall back to case_description from customData if no transcription
