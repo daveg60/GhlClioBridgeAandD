@@ -559,7 +559,7 @@ def ghl_webhook_live():
         elif brief_description:
             from_message = brief_description
         else:
-            from_message = "Lead from GoHighLevel call"
+            from_message = "Lead from Law Leaders call"
 
         print(f"📋 Extracted Info:")
         print(f"  First Name: {first_name}")
@@ -586,8 +586,8 @@ def ghl_webhook_live():
                 "from_email": email or "",
                 "from_phone": phone or "",
                 "from_message": from_message,
-                "referring_url": "https://gohighlevel.com",
-                "from_source": "GoHighLevel Call"
+                "referring_url": "https://app.lawleaders.com",
+                "from_source": "Law Leaders Call"
             },
             "inbox_lead_token": inbox_token
         }
