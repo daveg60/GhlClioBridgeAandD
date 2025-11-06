@@ -525,7 +525,7 @@ def get_token_from_db():
 
 @app.route('/api/ghl-webhook-live', methods=['POST'])
 def ghl_webhook_live():
-    """Live webhook endpoint for GoHighLevel - same as /webhook/gohighlevel"""
+    """Live webhook endpoint for GoHighLevel - sends to Clio Grow Lead Inbox"""
     try:
         # Get JSON data from GoHighLevel
         data = request.get_json()
@@ -539,95 +539,92 @@ def ghl_webhook_live():
         # GHL sends first_name and last_name separately
         first_name = data.get('first_name', '')
         last_name = data.get('last_name', '')
-        name = f"{first_name} {last_name}".strip() if (first_name or last_name) else ''
         
         email = data.get('email', data.get('contact', {}).get('email', ''))
         phone = data.get('phone', data.get('contact', {}).get('phone', ''))
-        state = data.get('state', data.get('contact', {}).get('state', ''))
 
-        # Extract transcription for case description
+        # Extract transcription
         transcription = data.get('transcription', '')
         if not transcription and 'customData' in data:
             transcription = data.get('customData', {}).get('transcription', '')
 
-        # Extract brief description (matter type + location) for Clio description field
+        # Extract brief description (matter type + location) 
         brief_description = extract_matter_description(transcription)
         
-        # FORCE truncation to be safe - Clio has 255 char limit
-        if brief_description and len(brief_description) > 255:
-            brief_description = brief_description[:252] + "..."
-        
-        # If extraction failed, use a safe default
-        if not brief_description:
-            brief_description = "New matter from Law Leaders/Legal Navigator"
-        
-        # Keep full transcription for Clio notes (65K char limit)
-        full_transcription = transcription
-
-        # Extract practice area based on transcription
-        practice_area = extract_practice_area(transcription)
+        # Build the message with brief description and full transcription
+        if brief_description and transcription:
+            from_message = f"{brief_description}\n\n--- Full Call Transcription ---\n{transcription}"
+        elif transcription:
+            from_message = transcription
+        elif brief_description:
+            from_message = brief_description
+        else:
+            from_message = "Lead from GoHighLevel call"
 
         print(f"📋 Extracted Info:")
-        print(f"  Name: {name}")
+        print(f"  First Name: {first_name}")
+        print(f"  Last Name: {last_name}")
         print(f"  Email: {email}")
         print(f"  Phone: {phone}")
-        print(f"  State: {state}")
-        print(f"  Practice Area: {practice_area}")
-        print(f"  Brief Description ({len(brief_description)} chars): {brief_description}")
-        print(f"  Full Transcription Length: {len(full_transcription)} chars")
+        print(f"  Brief Description: {brief_description}")
+        print(f"  Message Length: {len(from_message)} chars")
 
         # Validate required fields
-        if not name:
-            return jsonify({"error": "Name is required"}), 400
+        if not first_name and not last_name:
+            return jsonify({"error": "First or last name is required"}), 400
 
-        # Get Clio token
-        token = session.get('clio_token') or get_token_from_db()
-        if not token:
-            return jsonify({"error": "Not authenticated with Clio"}), 401
+        # Get Clio Grow inbox token
+        inbox_token = os.environ.get('CLIO_GROW_INBOX_TOKEN')
+        if not inbox_token:
+            return jsonify({"error": "Clio Grow inbox token not configured"}), 500
 
-        # Step 1: Create contact in Clio
-        print("\n🔄 Creating contact in Clio...")
-        contact_result = create_clio_contact(name, email, phone, state, token)
+        # Prepare Clio Grow Lead Inbox API payload
+        grow_payload = {
+            "inbox_lead": {
+                "from_first": first_name,
+                "from_last": last_name,
+                "from_email": email or "",
+                "from_phone": phone or "",
+                "from_message": from_message,
+                "referring_url": "https://gohighlevel.com",
+                "from_source": "GoHighLevel Call"
+            },
+            "inbox_lead_token": inbox_token
+        }
 
-        if "error" in contact_result:
-            print(f"❌ Contact creation failed: {contact_result}")
-            return jsonify({
-                "status": "error",
-                "message": "Data forwarded to Clio",
-                "clio_contact": contact_result,
-                "clio_matter": {"error": "Contact creation failed"}
-            }), 400
+        print("\n🔄 Sending lead to Clio Grow...")
+        print(f"📤 Payload: {json.dumps(grow_payload, indent=2)}")
 
-        print(f"✅ Contact created: {json.dumps(contact_result, indent=2)}")
+        # Send to Clio Grow Lead Inbox API
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
 
-        # Step 2: Create matter in Clio with brief description and full transcription note
-        print("\n🔄 Creating matter in Clio...")
-        matter_result = create_clio_matter(
-            contact_result, 
-            practice_area, 
-            brief_description,  # Brief description (matter type + location)
-            full_transcription,  # Full transcription goes to notes
-            token
+        response = requests.post(
+            "https://grow.clio.com/inbox_leads",
+            json=grow_payload,
+            headers=headers,
+            timeout=20
         )
 
-        if "error" in matter_result:
-            print(f"❌ Matter creation failed: {matter_result}")
+        print(f"📥 Clio Grow response status: {response.status_code}")
+        print(f"📥 Clio Grow response: {response.text}")
+
+        if response.status_code == 201:
+            print("✅ Successfully created lead in Clio Grow")
             return jsonify({
                 "status": "success",
-                "message": "Data forwarded to Clio",
-                "clio_contact": contact_result,
-                "clio_matter": matter_result
+                "message": "Lead forwarded to Clio Grow",
+                "clio_grow_response": response.json()
             }), 200
-
-        print(f"✅ Matter created: {json.dumps(matter_result, indent=2)}")
-
-        # Return success response in the format GHL expects
-        return jsonify({
-            "status": "success",
-            "message": "Data forwarded to Clio",
-            "clio_contact": contact_result,
-            "clio_matter": matter_result
-        }), 200
+        else:
+            print(f"❌ Failed to create lead in Clio Grow: {response.status_code}")
+            return jsonify({
+                "status": "error",
+                "message": "Failed to forward lead to Clio Grow",
+                "error": response.text
+            }), response.status_code
 
     except Exception as e:
         print(f"❌ Exception in webhook: {str(e)}")
