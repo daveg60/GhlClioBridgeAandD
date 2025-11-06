@@ -894,7 +894,7 @@ def create_clio_matter(contact_data, practice_area, description, full_transcript
             },
             "display_number": f"GHL-{contact_id}",
             "description": description if description else "",
-            "status": "Pending",
+            "status": "Open",
             "practice_area": practice_area or "General"
         }
     }
@@ -990,7 +990,7 @@ def create_clio_matter(contact_data, practice_area, description, full_transcript
                         "type": "Matter",
                         "display_number": f"GHL-{contact_id}",
                         "description": description if description else "",
-                        "status": "Pending",
+                        "status": "Open",
                         "practice_area": practice_area or "General"
                     }
                 },
