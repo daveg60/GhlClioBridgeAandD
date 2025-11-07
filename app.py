@@ -529,6 +529,18 @@ def get_token_from_db():
 @app.route('/api/ghl-webhook-live', methods=['POST'])
 def ghl_webhook_live():
     """Live webhook endpoint for GoHighLevel - sends to Clio Grow Lead Inbox"""
+
+    # 🔐 Verify that the lead token exists
+    if not lead_token:
+        print("❌ Missing CLIO_GROW_INBOX_TOKEN in environment")
+        return jsonify({"error": "Missing lead capture token"}), 500
+
+    # Prepare headers for Clio Grow API
+    headers = {
+        "Authorization": f"Bearer {lead_token}",
+        "Content-Type": "application/json"
+    }
+
     try:
         # Get JSON data from GoHighLevel
         data = request.get_json()
