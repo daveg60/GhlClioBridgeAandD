@@ -8,7 +8,6 @@ import secrets
 import psycopg2
 # 🔐 Load Lead Capture Token from environment (set in DO or Replit secrets)
 import os
-lead_token = os.getenv("CLIO_GROW_INBOX_TOKEN")
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(16))
@@ -531,9 +530,10 @@ def ghl_webhook_live():
     """Live webhook endpoint for GoHighLevel - sends to Clio Grow Lead Inbox"""
 
     # 🔐 Verify that the lead token exists
+    lead_token = os.environ.get("CLIO_GROW_INBOX_TOKEN")
     if not lead_token:
-        print("❌ Missing CLIO_GROW_INBOX_TOKEN in environment")
-        return jsonify({"error": "Missing lead capture token"}), 500
+        print("❌ Missing CLIO_GROW_INBOX_TOKEN in environment (runtime)")
+        return jsonify({"error": "Clio Grow inbox token not configured"}), 500
 
     # Prepare headers for Clio Grow API
     headers = {
