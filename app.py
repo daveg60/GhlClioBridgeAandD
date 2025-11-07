@@ -6,6 +6,9 @@ import json
 from functools import wraps
 import secrets
 import psycopg2
+# 🔐 Load Lead Capture Token from environment (set in DO or Replit secrets)
+import os
+lead_token = os.getenv("CLIO_GROW_INBOX_TOKEN")
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(16))
